@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: rgb(241 245 249);
+  }
+}
+
+@layer components {
+  .sidebar-scroll::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-thumb {
+    background: #1a3d5c;
+    border-radius: 2px;
+  }
+
+  .sap-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgb(100 116 139);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .sap-value {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: rgb(30 41 59);
+  }
+}
