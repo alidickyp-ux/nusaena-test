@@ -3,6 +3,9 @@ import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
 import * as XLSX from 'xlsx';
 
+// 🔥 WAJIB: xlsx pakai Node.js API (Buffer dll), gagal kalau jalan di Edge Runtime
+export const runtime = 'nodejs';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -101,7 +104,6 @@ export async function GET(
     ];
 
     const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-    // Set column width
     summarySheet['!cols'] = [{ wch: 20 }, { wch: 30 }];
     XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
 
@@ -127,17 +129,17 @@ export async function GET(
 
     const detailSheet = XLSX.utils.aoa_to_sheet(detailData);
     detailSheet['!cols'] = [
-      { wch: 5 },   // No
-      { wch: 20 },  // Resi
-      { wch: 12 },  // Status
-      { wch: 15 },  // Sorting By
-      { wch: 15 },  // Handover By
-      { wch: 20 },  // Sorting At
-      { wch: 20 },  // Handover At
+      { wch: 5 },
+      { wch: 20 },
+      { wch: 12 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 20 },
+      { wch: 20 },
     ];
     XLSX.utils.book_append_sheet(workbook, detailSheet, 'Detail Resi');
 
-    // ===== SHEET 3: DISCREPANCY (hanya cancel & not found) =====
+    // ===== SHEET 3: DISCREPANCY =====
     const discrepancyLogs = historyLogs.filter(
       (h: any) => h.status === 'CANCELLED' || h.status === 'NOT_FOUND'
     );
@@ -159,7 +161,6 @@ export async function GET(
       XLSX.utils.book_append_sheet(workbook, discSheet, 'Discrepancy');
     }
 
-    // Generate buffer
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
     return new NextResponse(buffer, {

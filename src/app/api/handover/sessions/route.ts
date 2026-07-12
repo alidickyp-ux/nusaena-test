@@ -1,4 +1,3 @@
-// src/app/api/handover/sessions/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
@@ -13,15 +12,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const session = await verifySession(sessionToken);
-    if (!session) {
+    const userSession = await verifySession(sessionToken);
+    if (!userSession) {
       return NextResponse.json(
         { success: false, message: 'Invalid session' },
         { status: 401 }
       );
     }
 
-    // 🔥 HANYA session yang masih punya paket BELUM di-handover (remaining_items > 0)
+    // 🔥 Ambil SEMUA session RUNNING (termasuk yang remaining = 0)
     const sessions = await sql`
       SELECT 
         ss.id,
@@ -45,8 +44,6 @@ export async function GET(request: NextRequest) {
         ss.created_at,
         mt.transporter_name, 
         u.full_name
-      HAVING 
-        COALESCE(COUNT(sd.id) - COUNT(CASE WHEN sd.is_validated_handover = true THEN 1 END), 0) > 0
       ORDER BY ss.created_at DESC
     `;
 

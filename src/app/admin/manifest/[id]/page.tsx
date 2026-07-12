@@ -26,6 +26,8 @@ interface ManifestData {
   total_packages_handed: number;
   total_discrepancy: number;
   signed_at: string;
+  courier_signature: string | null;   // ← tambahin
+  security_signature: string | null;  // ← tambahin
 }
 
 interface HistoryLog {
@@ -269,7 +271,7 @@ export default function ManifestDetailPage() {
           <div className="flex justify-between items-center mb-4 no-print">
             <h3 className="font-bold text-slate-700">Preview Print</h3>
             <button
-              onClick={() => window.open(`/admin/manifest/${params.id}/print`, '_blank')}
+              onClick={() => window.open(`/print/manifest/${manifest.id}`, '_blank')}
               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium"
             >
               <Printer className="w-4 h-4 inline mr-2" />

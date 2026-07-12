@@ -210,7 +210,7 @@ export default function ManifestPage() {
                           <Download className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => window.open(`/admin/manifest/${m.id}/print`, '_blank')}
+                          onClick={() => window.open(`/print/manifest/${m.id}`, '_blank')}
                           className="p-1.5 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
                           title="Print"
                         >

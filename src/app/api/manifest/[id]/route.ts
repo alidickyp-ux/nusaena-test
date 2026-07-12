@@ -39,7 +39,7 @@ export async function GET(
       );
     }
 
-    // 🔥 Ambil detail manifest
+    // 🔥 Ambil detail manifest — hanya courier_signature & security_signature (operator tidak tanda tangan)
     const manifest = await sql`
       SELECT 
         hm.id,
@@ -50,6 +50,8 @@ export async function GET(
         hm.total_packages_handed,
         hm.total_discrepancy,
         hm.signed_at,
+        hm.courier_signature,
+        hm.security_signature,
         ss.session_code,
         mt.transporter_name,
         u.full_name as operator_name

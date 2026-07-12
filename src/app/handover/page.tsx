@@ -15,6 +15,7 @@ interface Session {
   total_items: number;
   remaining_items: number;
   validated_items: number;
+  status: string;
 }
 
 interface HandoverItem {
@@ -29,9 +30,11 @@ export default function HandoverPage() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [allSessions, setAllSessions] = useState<Session[]>([]);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [sessionItems, setSessionItems] = useState<HandoverItem[]>([]);
+  const [activeTab, setActiveTab] = useState<"ready" | "done">("ready");
+  const [userRole, setUserRole] = useState<string>("");
   
   // Form state
   const [courierName, setCourierName] = useState("");
@@ -57,19 +60,122 @@ export default function HandoverPage() {
       const res = await fetch("/api/handover/sessions");
       if (res.ok) {
         const { sessions } = await res.json();
-        setSessions(sessions);
+        const formatted = sessions.map((s: any) => ({
+          id: s.id,
+          session_code: s.session_code,
+          transporter_name: s.transporter_name,
+          operator_name: s.operator_name,
+          total_items: Number(s.total_items) || 0,
+          remaining_items: Number(s.remaining_items) || 0,
+          validated_items: Number(s.validated_items) || 0,
+          status: s.status,
+          created_at: s.created_at,
+        }));
+        setAllSessions(formatted);
       }
     } catch (error) {
       console.error("Error fetching sessions:", error);
     }
   }, []);
 
+  // Fetch user role
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const { user } = await res.json();
+          setUserRole(user?.role || "");
+        }
+      } catch (error) {
+        console.error("Error fetching user role:", error);
+      }
+    };
+    fetchUserRole();
+  }, []);
+
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
 
-  // Select session dan ambil detail
+  // Filter sessions
+  const readySessions = allSessions.filter(s => s.remaining_items > 0);
+  const doneSessions = allSessions.filter(s => s.remaining_items === 0 && s.total_items > 0);
+
+  // 🔥 Fungsi untuk close session manual - HANYA ADMIN
+  const handleCloseSession = async (sessionId: string, sessionCode: string) => {
+    if (userRole !== 'ADMIN') {
+      showToast.error("Hanya Admin yang bisa menutup session tanpa manifest");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/sorting/close-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+
+      const result = await res.json();
+      if (res.ok && result.success) {
+        showToast.success(`✅ Session ${sessionCode} telah ditutup tanpa manifest (Admin)`);
+        await fetchSessions();
+      } else {
+        showToast.error(result.message || "Gagal menutup session");
+      }
+    } catch (error) {
+      showToast.error("Error closing session");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🔥 Select session - Tab "Selesai" WAJIB melalui handover
   const handleSelectSession = async (session: Session) => {
+    // 🔥 Jika di tab "Selesai", harus buat manifest dulu
+    if (activeTab === "done") {
+      if (session.remaining_items === 0 && session.total_items > 0) {
+        const shouldProceed = confirm(
+          `Session ${session.session_code} sudah selesai (${session.total_items} paket) ` +
+          `tapi belum memiliki manifest handover.\n\n` +
+          `Apakah Anda ingin membuat manifest sekarang?`
+        );
+        
+        if (!shouldProceed) {
+          return;
+        }
+        
+        // Lanjut ke handover
+        setLoading(true);
+        setSelectedSession(session);
+        
+        try {
+          const res = await fetch(`/api/handover/detail/${session.id}`);
+          if (res.ok) {
+            const data = await res.json();
+            setSessionItems(data.items || []);
+            
+            const scanned = data.items.filter((i: HandoverItem) => i.is_validated_handover).length;
+            setVerifyProgress({
+              scanned: scanned,
+              total: data.items.length
+            });
+            
+            setStep("mode");
+          } else {
+            showToast.error("Gagal mengambil detail session");
+          }
+        } catch (error) {
+          showToast.error("Error loading session detail");
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+    }
+    
+    // Session normal (remaining > 0)
     if (session.remaining_items === 0) {
       showToast.warning("Session ini sudah selesai di-handover");
       return;
@@ -84,7 +190,6 @@ export default function HandoverPage() {
         const data = await res.json();
         setSessionItems(data.items || []);
         
-        // 🔥 Hitung progress: yang sudah discan / total
         const scanned = data.items.filter((i: HandoverItem) => i.is_validated_handover).length;
         setVerifyProgress({
           scanned: scanned,
@@ -135,7 +240,6 @@ export default function HandoverPage() {
         playAcceptedSound();
         showToast.success(`✅ ${cleanBarcode} diverifikasi`);
         
-        // 🔥 Update local state
         setSessionItems(prev => 
           prev.map(item => 
             item.barcode_resi === cleanBarcode 
@@ -144,13 +248,11 @@ export default function HandoverPage() {
           )
         );
         
-        // 🔥 Update progress (MAJU, bukan mundur)
         setVerifyProgress(prev => ({
           ...prev,
           scanned: prev.scanned + 1
         }));
         
-        // 🔥 Cek apakah semua sudah discan
         if (verifyProgress.scanned + 1 === verifyProgress.total) {
           showToast.success("🎉 Semua paket sudah discan!");
           setTimeout(() => setStep("trust"), 1500);
@@ -168,7 +270,7 @@ export default function HandoverPage() {
     }
   };
 
-  // 🔥 Handle Discrepancy
+  // Handle Discrepancy
   const handleSetDiscrepancy = (barcode: string, reason: "NOT_FOUND" | "CANCELLED") => {
     setDiscrepancyReasons(prev => {
       const newReasons = { ...prev };
@@ -178,7 +280,6 @@ export default function HandoverPage() {
       } else {
         newReasons[barcode] = reason;
         showToast.info(`📝 ${barcode} → ${reason}`);
-        // 🔥 Mark as validated (supaya progress maju)
         setSessionItems(prev => 
           prev.map(item => 
             item.barcode_resi === barcode 
@@ -212,7 +313,6 @@ export default function HandoverPage() {
   const handleFinalize = async () => {
     if (!selectedSession) return;
     
-    // Validasi
     if (!courierName.trim()) {
       showToast.error("Nama kurir wajib diisi");
       return;
@@ -298,9 +398,13 @@ export default function HandoverPage() {
   };
 
   // =============================================
-  // RENDER: Select Session
+  // RENDER: Select Session dengan TAB
   // =============================================
   if (step === "select") {
+    const currentSessions = activeTab === "ready" ? readySessions : doneSessions;
+    const totalReady = readySessions.length;
+    const totalDone = doneSessions.length;
+
     return (
       <OperatorShell>
         <div className="p-4 space-y-4">
@@ -319,21 +423,53 @@ export default function HandoverPage() {
             </button>
           </div>
 
+          {/* 🔥 TABS */}
+          <div className="flex rounded-xl bg-stone-100 p-1">
+            <button
+              onClick={() => setActiveTab("ready")}
+              className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-all ${
+                activeTab === "ready"
+                  ? "bg-white text-stone-900 shadow-sm"
+                  : "text-stone-500 hover:text-stone-700"
+              }`}
+            >
+              Siap Handover ({totalReady})
+            </button>
+            <button
+              onClick={() => setActiveTab("done")}
+              className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-all ${
+                activeTab === "done"
+                  ? "bg-white text-stone-900 shadow-sm"
+                  : "text-stone-500 hover:text-stone-700"
+              }`}
+            >
+              Buat Manifest ({totalDone})
+            </button>
+          </div>
+
           <div className="space-y-2">
             <p className="text-stone-500 text-xs uppercase font-bold tracking-widest px-1">
-              Pilih Sesi untuk Di-Handover
+              {activeTab === "ready" 
+                ? "Pilih Sesi untuk Di-Handover" 
+                : "Session Selesai - Buat Manifest Handover"}
             </p>
-            {sessions.length === 0 ? (
+            
+            {currentSessions.length === 0 ? (
               <div className="p-8 bg-white border-2 border-dashed border-stone-300 rounded-2xl text-center text-stone-500 text-sm">
-                ✅ Semua sesi sudah selesai handover.<br/>
-                Tidak ada paket yang perlu diserahterimakan.
+                {activeTab === "ready" 
+                  ? "✅ Semua sesi sudah selesai handover." 
+                  : "✅ Semua session sudah memiliki manifest."}
               </div>
             ) : (
-              sessions.map((s) => (
+              currentSessions.map((s) => (
                 <div
                   key={s.id}
                   onClick={() => handleSelectSession(s)}
-                  className="bg-white p-4 rounded-2xl border-l-4 border-l-orange-500 border border-stone-200 shadow-sm cursor-pointer hover:shadow-md transition-all active:scale-[0.98]"
+                  className={`p-4 rounded-2xl border-l-4 border border-stone-200 shadow-sm cursor-pointer hover:shadow-md transition-all active:scale-[0.98] ${
+                    activeTab === "ready" 
+                      ? "border-l-orange-500" 
+                      : "border-l-emerald-500"
+                  }`}
                 >
                   <div className="flex justify-between items-start">
                     <div>
@@ -345,18 +481,55 @@ export default function HandoverPage() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-stone-400">Siap handover</p>
-                      <p className="text-lg font-bold text-orange-600">
-                        {s.remaining_items}
+                      <p className="text-xs text-stone-400">
+                        {activeTab === "ready" ? "Siap handover" : "Selesai"}
+                      </p>
+                      <p className={`text-lg font-bold ${
+                        activeTab === "ready" ? "text-orange-600" : "text-emerald-600"
+                      }`}>
+                        {activeTab === "ready" ? s.remaining_items : s.total_items}
                       </p>
                     </div>
                   </div>
                   <div className="mt-2 flex justify-between text-xs text-stone-400">
                     <span>Total: {s.total_items} paket</span>
-                    <span className="text-emerald-600">
+                    <span className={s.validated_items > 0 ? "text-emerald-600" : "text-stone-400"}>
                       {s.validated_items || 0} sudah di-handover
                     </span>
                   </div>
+                  
+                  {/* 🔥 TOMBOL ACTION DI TAB "SELESAI" */}
+                  {activeTab === "done" && (
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectSession(s);
+                        }}
+                        className="flex-1 text-[10px] bg-orange-500 hover:bg-orange-600 text-white py-1.5 rounded-lg font-medium transition-colors"
+                      >
+                        📝 Buat Manifest
+                      </button>
+                      {userRole === 'ADMIN' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(
+                              `⚠️ PERINGATAN ADMIN!\n\n` +
+                              `Session ${s.session_code} akan ditutup TANPA manifest.\n` +
+                              `Data tidak akan tercatat di history logs.\n\n` +
+                              `Yakin ingin melanjutkan?`
+                            )) {
+                              handleCloseSession(s.id, s.session_code);
+                            }
+                          }}
+                          className="flex-1 text-[10px] bg-red-500 hover:bg-red-600 text-white py-1.5 rounded-lg font-medium transition-colors"
+                        >
+                          ❌ Tutup Tanpa Manifest
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -401,6 +574,11 @@ export default function HandoverPage() {
               <span className="text-xs bg-white px-3 py-1 rounded-lg font-bold text-orange-600">
                 📦 {selectedSession.remaining_items} siap handover
               </span>
+              {selectedSession.remaining_items === 0 && (
+                <span className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg font-bold">
+                  ✅ Selesai - Buat Manifest
+                </span>
+              )}
             </div>
           </div>
 
@@ -449,7 +627,7 @@ export default function HandoverPage() {
   }
 
   // =============================================
-  // RENDER: Verify Mode (Scan Ulang) - DIPERBAIKI
+  // RENDER: Verify Mode
   // =============================================
   if (step === "verify" && selectedSession) {
     const allScanned = verifyProgress.scanned === verifyProgress.total;
@@ -472,7 +650,6 @@ export default function HandoverPage() {
             </button>
           </div>
 
-          {/* 🔥 Progress BAR (MAJU) */}
           <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
             <div className="flex justify-between items-center mb-2">
               <div>
@@ -486,7 +663,6 @@ export default function HandoverPage() {
                 <p className="text-[10px] text-amber-500">terverifikasi</p>
               </div>
             </div>
-            {/* Progress bar */}
             <div className="w-full bg-amber-200 rounded-full h-2.5">
               <div 
                 className="bg-amber-600 h-2.5 rounded-full transition-all duration-300"
@@ -495,7 +671,6 @@ export default function HandoverPage() {
             </div>
           </div>
 
-          {/* SCANNER */}
           <div className="bg-white p-4 rounded-2xl border border-stone-200">
             <form onSubmit={(e) => { e.preventDefault(); handleVerifyScan(); }} className="space-y-3">
               <label className="block text-stone-500 font-bold uppercase text-xs tracking-widest">
@@ -527,7 +702,6 @@ export default function HandoverPage() {
             </form>
           </div>
 
-          {/* 🔥 LIST PAKET dengan UI CANCEL & NOT FOUND yang DIPERBAIKI */}
           <div className="max-h-52 overflow-y-auto space-y-1.5">
             <p className="text-xs text-stone-400 font-medium px-1">
               {sessionItems.filter(i => !i.is_validated_handover).length} paket belum diverifikasi
@@ -550,12 +724,10 @@ export default function HandoverPage() {
                   
                   <div className="flex items-center gap-2">
                     {item.is_validated_handover ? (
-                      // 🔥 SUDAH DIVERIFIKASI
                       <span className="text-xs font-medium text-emerald-600">
                         {isDiscrepancy ? `⚠️ ${discrepancyReasons[item.barcode_resi]}` : "✅ DONE"}
                       </span>
                     ) : (
-                      // 🔥 BELUM DIVERIFIKASI - Tombol Action
                       <div className="flex gap-1.5">
                         <button
                           onClick={() => handleSetDiscrepancy(item.barcode_resi, "NOT_FOUND")}
@@ -577,7 +749,6 @@ export default function HandoverPage() {
             })}
           </div>
 
-          {/* 🔥 Tombol Lanjut */}
           <button
             onClick={() => setStep("trust")}
             disabled={
@@ -597,7 +768,6 @@ export default function HandoverPage() {
                 : "⏳ Scan semua paket atau tandai discrepancy"}
           </button>
 
-          {/* Info discrepancy */}
           {Object.keys(discrepancyReasons).length > 0 && (
             <div className="bg-red-50 border border-red-200 p-2.5 rounded-xl">
               <p className="text-xs text-red-600 font-medium">
@@ -696,7 +866,6 @@ export default function HandoverPage() {
                 />
               </div>
 
-              {/* Signature Pad Buttons */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-stone-600 uppercase tracking-wider mb-1">
@@ -748,7 +917,6 @@ export default function HandoverPage() {
           </div>
         </OperatorShell>
 
-        {/* Signature Pad Modals */}
         {showCourierSignature && (
           <SignaturePadModal
             title="Tanda Tangan Kurir"

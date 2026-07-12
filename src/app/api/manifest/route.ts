@@ -20,7 +20,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 🔥 Cek role dari session payload
     if (userSession.role !== 'ADMIN') {
       return NextResponse.json(
         { success: false, message: 'Forbidden - Admin only' },
@@ -28,6 +27,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // 🔥 Ambil semua manifest yang sudah ditandatangani, terbaru dulu
     const manifests = await sql`
       SELECT 
         hm.id,
@@ -54,9 +54,9 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error fetching manifests:', error);
+    console.error('Error fetching manifest list:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to fetch manifests' },
+      { success: false, message: 'Failed to fetch manifest list' },
       { status: 500 }
     );
   }

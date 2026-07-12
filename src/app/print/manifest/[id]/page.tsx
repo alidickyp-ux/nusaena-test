@@ -16,6 +16,8 @@ interface ManifestData {
   total_packages_handed: number;
   total_discrepancy: number;
   signed_at: string;
+  courier_signature: string | null;
+  security_signature: string | null;
 }
 
 interface HistoryLog {
@@ -53,14 +55,14 @@ export default function ManifestPrintPage() {
   }, [params.id]);
 
   // Auto print after load
-  useEffect(() => {
-    if (!loading && manifest) {
-      // Trigger print after render
-      setTimeout(() => {
-        window.print();
-      }, 1000);
-    }
-  }, [loading, manifest]);
+        useEffect(() => {
+        if (!loading && manifest) {
+            document.title = `Handover-${manifest.session_code}`;
+            setTimeout(() => {
+            window.print();
+            }, 1000);
+        }
+        }, [loading, manifest]);
 
   if (loading) {
     return (
@@ -81,9 +83,5 @@ export default function ManifestPrintPage() {
     );
   }
 
-  return (
-    <div className="bg-white min-h-screen">
-      <ManifestPrint manifest={manifest} historyLogs={historyLogs} />
-    </div>
-  );
+  return <ManifestPrint manifest={manifest} historyLogs={historyLogs} />;
 }
