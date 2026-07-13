@@ -24,6 +24,8 @@ interface HandoverItem {
   scanned_at: string;
   is_validated_handover: boolean;
   discrepancy_reason: string | null;
+  validated_by: string | null;
+  validated_at: string | null;
 }
 
 export default function HandoverPage() {
@@ -53,6 +55,11 @@ export default function HandoverPage() {
   const [verifyBarcode, setVerifyBarcode] = useState("");
   const [verifyProgress, setVerifyProgress] = useState({ scanned: 0, total: 0 });
   const [discrepancyReasons, setDiscrepancyReasons] = useState<Record<string, string>>({});
+
+  // 🔥 STATE UNTUK SEARCH & TANDAI
+  const [verifyMethod, setVerifyMethod] = useState<"scan" | "search">("scan");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<HandoverItem[]>([]);
 
   // Fetch sessions
   const fetchSessions = useCallback(async () => {
@@ -133,7 +140,6 @@ export default function HandoverPage() {
 
   // 🔥 Select session - Tab "Selesai" WAJIB melalui handover
   const handleSelectSession = async (session: Session) => {
-    // 🔥 Jika di tab "Selesai", harus buat manifest dulu
     if (activeTab === "done") {
       if (session.remaining_items === 0 && session.total_items > 0) {
         const shouldProceed = confirm(
@@ -146,7 +152,6 @@ export default function HandoverPage() {
           return;
         }
         
-        // Lanjut ke handover
         setLoading(true);
         setSelectedSession(session);
         
@@ -175,7 +180,6 @@ export default function HandoverPage() {
       }
     }
     
-    // Session normal (remaining > 0)
     if (session.remaining_items === 0) {
       showToast.warning("Session ini sudah selesai di-handover");
       return;
@@ -214,6 +218,10 @@ export default function HandoverPage() {
       setStep("trust");
     } else {
       setStep("verify");
+      // Reset search state saat masuk verify
+      setVerifyMethod("scan");
+      setSearchQuery("");
+      setSearchResults([]);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   };
@@ -270,30 +278,215 @@ export default function HandoverPage() {
     }
   };
 
-  // Handle Discrepancy
-  const handleSetDiscrepancy = (barcode: string, reason: "NOT_FOUND" | "CANCELLED") => {
-    setDiscrepancyReasons(prev => {
-      const newReasons = { ...prev };
-      if (newReasons[barcode] === reason) {
-        delete newReasons[barcode];
-        showToast.info(`✅ ${barcode} dibatalkan dari discrepancy`);
+  // 🔥 Handle Discrepancy dari tombol di list (DIPERBAIKI - Sync dengan API)
+  const handleSetDiscrepancy = async (barcode: string, reason: "NOT_FOUND" | "CANCELLED") => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/handover/mark-discrepancy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: selectedSession?.id,
+          barcode: barcode,
+          reason: reason,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (res.ok && result.success) {
+        setDiscrepancyReasons(prev => {
+          const newReasons = { ...prev };
+          if (newReasons[barcode] === reason) {
+            delete newReasons[barcode];
+            showToast.info(`✅ ${barcode} dibatalkan dari discrepancy`);
+            setSessionItems(prevItems => 
+              prevItems.map(item => 
+                item.barcode_resi === barcode 
+                  ? { 
+                      ...item, 
+                      is_validated_handover: false, 
+                      discrepancy_reason: null,
+                      validated_by: null,
+                      validated_at: null
+                    }
+                  : item
+              )
+            );
+            setVerifyProgress(prev => ({
+              ...prev,
+              scanned: prev.scanned - 1
+            }));
+          } else {
+            newReasons[barcode] = reason;
+            showToast.info(`📝 ${barcode} → ${reason}`);
+            setSessionItems(prevItems => 
+              prevItems.map(item => 
+                item.barcode_resi === barcode 
+                  ? { 
+                      ...item, 
+                      is_validated_handover: true, 
+                      discrepancy_reason: reason,
+                      validated_by: result.data?.validated_by || null,
+                      validated_at: result.data?.validated_at || null
+                    }
+                  : item
+              )
+            );
+            setVerifyProgress(prev => ({
+              ...prev,
+              scanned: prev.scanned + 1
+            }));
+          }
+          return newReasons;
+        });
       } else {
-        newReasons[barcode] = reason;
-        showToast.info(`📝 ${barcode} → ${reason}`);
-        setSessionItems(prev => 
-          prev.map(item => 
-            item.barcode_resi === barcode 
-              ? { ...item, is_validated_handover: true, discrepancy_reason: reason }
-              : item
-          )
-        );
-        setVerifyProgress(prev => ({
-          ...prev,
-          scanned: prev.scanned + 1
-        }));
+        showToast.error(result.message || "Gagal menandai discrepancy");
       }
-      return newReasons;
-    });
+    } catch (error) {
+      showToast.error("Error marking discrepancy");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🔥 Fungsi untuk mencari resi (Search & Tandai)
+  const handleSearchResi = (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim() || query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    
+    const results = sessionItems.filter(item => 
+      item.barcode_resi.toLowerCase().includes(query.toLowerCase())
+    );
+    setSearchResults(results);
+  };
+
+  // 🔥 Fungsi untuk menandai dari hasil search (DIPERBAIKI - Sync dengan API)
+  const handleMarkFromSearch = async (barcode: string, reason: "NOT_FOUND" | "CANCELLED") => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/handover/mark-discrepancy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: selectedSession?.id,
+          barcode: barcode,
+          reason: reason,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (res.ok && result.success) {
+        setDiscrepancyReasons(prev => {
+          const newReasons = { ...prev };
+          if (newReasons[barcode] === reason) {
+            delete newReasons[barcode];
+            showToast.info(`✅ ${barcode} dibatalkan dari discrepancy`);
+            setSessionItems(prevItems => 
+              prevItems.map(item => 
+                item.barcode_resi === barcode 
+                  ? { 
+                      ...item, 
+                      is_validated_handover: false, 
+                      discrepancy_reason: null,
+                      validated_by: null,
+                      validated_at: null
+                    }
+                  : item
+              )
+            );
+            setVerifyProgress(prev => ({
+              ...prev,
+              scanned: prev.scanned - 1
+            }));
+          } else {
+            newReasons[barcode] = reason;
+            showToast.info(`📝 ${barcode} → ${reason}`);
+            setSessionItems(prevItems => 
+              prevItems.map(item => 
+                item.barcode_resi === barcode 
+                  ? { 
+                      ...item, 
+                      is_validated_handover: true, 
+                      discrepancy_reason: reason,
+                      validated_by: result.data?.validated_by || null,
+                      validated_at: result.data?.validated_at || null
+                    }
+                  : item
+              )
+            );
+            setVerifyProgress(prev => ({
+              ...prev,
+              scanned: prev.scanned + 1
+            }));
+          }
+          return newReasons;
+        });
+
+        // Clear search
+        setSearchQuery("");
+        setSearchResults([]);
+      } else {
+        showToast.error(result.message || "Gagal menandai discrepancy");
+      }
+    } catch (error) {
+      showToast.error("Error marking discrepancy");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🔥 Reset semua discrepancy (DIPERBAIKI)
+  const handleResetAllDiscrepancy = async () => {
+    if (Object.keys(discrepancyReasons).length === 0) {
+      showToast.info("Tidak ada discrepancy untuk direset");
+      return;
+    }
+    
+    if (!confirm(`Reset semua ${Object.keys(discrepancyReasons).length} discrepancy?`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/handover/reset-discrepancy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: selectedSession?.id,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (res.ok && result.success) {
+        setDiscrepancyReasons({});
+        setSessionItems(prev => 
+          prev.map(item => ({
+            ...item,
+            is_validated_handover: false,
+            discrepancy_reason: null,
+            validated_by: null,
+            validated_at: null
+          }))
+        );
+        setVerifyProgress({
+          scanned: 0,
+          total: sessionItems.length
+        });
+        showToast.info("🔄 Semua status discrepancy direset");
+      } else {
+        showToast.error(result.message || "Gagal reset discrepancy");
+      }
+    } catch (error) {
+      showToast.error("Error resetting discrepancy");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle Signature Save
@@ -381,6 +574,10 @@ export default function HandoverPage() {
       setSelectedSession(null);
     } else if (step === "trust" || step === "verify") {
       setStep("mode");
+      // Reset search state
+      setVerifyMethod("scan");
+      setSearchQuery("");
+      setSearchResults([]);
     }
   };
 
@@ -395,6 +592,9 @@ export default function HandoverPage() {
     setSecuritySignature("");
     setDiscrepancyReasons({});
     setVerifyBarcode("");
+    setVerifyMethod("scan");
+    setSearchQuery("");
+    setSearchResults([]);
   };
 
   // =============================================
@@ -423,7 +623,6 @@ export default function HandoverPage() {
             </button>
           </div>
 
-          {/* 🔥 TABS */}
           <div className="flex rounded-xl bg-stone-100 p-1">
             <button
               onClick={() => setActiveTab("ready")}
@@ -498,7 +697,6 @@ export default function HandoverPage() {
                     </span>
                   </div>
                   
-                  {/* 🔥 TOMBOL ACTION DI TAB "SELESAI" */}
                   {activeTab === "done" && (
                     <div className="mt-2 flex gap-2">
                       <button
@@ -627,7 +825,7 @@ export default function HandoverPage() {
   }
 
   // =============================================
-  // RENDER: Verify Mode
+  // RENDER: Verify Mode dengan 2 Metode
   // =============================================
   if (step === "verify" && selectedSession) {
     const allScanned = verifyProgress.scanned === verifyProgress.total;
@@ -635,12 +833,13 @@ export default function HandoverPage() {
     return (
       <OperatorShell>
         <div className="p-4 space-y-4">
+          {/* Header */}
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[0.65rem] text-stone-400 font-bold uppercase tracking-widest">
                 Verify Mode
               </p>
-              <p className="font-extrabold text-lg text-stone-900">Scan Ulang Paket</p>
+              <p className="font-extrabold text-lg text-stone-900">Verifikasi Paket</p>
             </div>
             <button
               onClick={handleBack}
@@ -650,6 +849,7 @@ export default function HandoverPage() {
             </button>
           </div>
 
+          {/* Session Info + Progress */}
           <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
             <div className="flex justify-between items-center mb-2">
               <div>
@@ -667,88 +867,218 @@ export default function HandoverPage() {
               <div 
                 className="bg-amber-600 h-2.5 rounded-full transition-all duration-300"
                 style={{ width: `${verifyProgress.total > 0 ? (verifyProgress.scanned / verifyProgress.total) * 100 : 0}%` }}
-              ></div>
+              />
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-stone-200">
-            <form onSubmit={(e) => { e.preventDefault(); handleVerifyScan(); }} className="space-y-3">
-              <label className="block text-stone-500 font-bold uppercase text-xs tracking-widest">
-                {allScanned ? "✅ Semua paket sudah discan" : "Scan Barcode Paket"}
-              </label>
-              <input
-                ref={inputRef}
-                type="text"
-                autoFocus
-                disabled={loading || allScanned}
-                placeholder={allScanned ? "Semua sudah discan" : "Scan resi..."}
-                value={verifyBarcode}
-                onChange={(e) => setVerifyBarcode(e.target.value)}
-                className={`w-full px-4 py-3 bg-stone-50 border-2 rounded-xl text-stone-900 font-mono text-lg font-semibold focus:outline-none focus:border-amber-500 ${
-                  allScanned ? "border-emerald-300 bg-emerald-50" : "border-stone-300"
-                }`}
-              />
-              <button
-                type="submit"
-                disabled={loading || allScanned}
-                className={`w-full py-3 font-bold rounded-xl transition-all ${
-                  allScanned
-                    ? "bg-emerald-500 text-white cursor-not-allowed"
-                    : "bg-amber-600 hover:bg-amber-700 text-white"
-                }`}
-              >
-                {loading ? "⏳ Memproses..." : allScanned ? "✅ Selesai" : "🔍 Verifikasi Paket"}
-              </button>
-            </form>
+          {/* 🔥 METODE VERIFIKASI */}
+          <div className="flex rounded-xl bg-stone-100 p-1">
+            <button
+              onClick={() => {
+                setVerifyMethod("scan");
+                setSearchQuery("");
+                setSearchResults([]);
+                setTimeout(() => inputRef.current?.focus(), 100);
+              }}
+              className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                verifyMethod === "scan"
+                  ? "bg-white text-stone-900 shadow-sm"
+                  : "text-stone-500 hover:text-stone-700"
+              }`}
+            >
+              📷 Scan Barcode
+            </button>
+            <button
+              onClick={() => {
+                setVerifyMethod("search");
+                setSearchQuery("");
+                setSearchResults([]);
+              }}
+              className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                verifyMethod === "search"
+                  ? "bg-white text-stone-900 shadow-sm"
+                  : "text-stone-500 hover:text-stone-700"
+              }`}
+            >
+              🔍 Cari & Tandai
+            </button>
           </div>
 
-          <div className="max-h-52 overflow-y-auto space-y-1.5">
-            <p className="text-xs text-stone-400 font-medium px-1">
-              {sessionItems.filter(i => !i.is_validated_handover).length} paket belum diverifikasi
-            </p>
-            {sessionItems.map((item) => {
+          {/* 🔥 METHOD 1: SCAN BARCODE */}
+          {verifyMethod === "scan" && (
+            <div className="bg-white p-4 rounded-2xl border border-stone-200">
+              <form onSubmit={(e) => { e.preventDefault(); handleVerifyScan(); }} className="space-y-3">
+                <label className="block text-stone-500 font-bold uppercase text-xs tracking-widest">
+                  {allScanned ? "✅ Semua paket sudah discan" : "Scan Barcode Paket"}
+                </label>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  autoFocus
+                  disabled={loading || allScanned}
+                  placeholder={allScanned ? "Semua sudah discan" : "Scan resi..."}
+                  value={verifyBarcode}
+                  onChange={(e) => setVerifyBarcode(e.target.value)}
+                  className={`w-full px-4 py-3 bg-stone-50 border-2 rounded-xl text-stone-900 font-mono text-lg font-semibold focus:outline-none focus:border-amber-500 ${
+                    allScanned ? "border-emerald-300 bg-emerald-50" : "border-stone-300"
+                  }`}
+                />
+                <button
+                  type="submit"
+                  disabled={loading || allScanned}
+                  className={`w-full py-3 font-bold rounded-xl transition-all ${
+                    allScanned
+                      ? "bg-emerald-500 text-white cursor-not-allowed"
+                      : "bg-amber-600 hover:bg-amber-700 text-white"
+                  }`}
+                >
+                  {loading ? "⏳ Memproses..." : allScanned ? "✅ Selesai" : "🔍 Verifikasi Paket"}
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* 🔥 METHOD 2: SEARCH & TANDAI */}
+          {verifyMethod === "search" && (
+            <div className="bg-white p-4 rounded-2xl border border-stone-200">
+              <div className="space-y-3">
+                <label className="block text-stone-500 font-bold uppercase text-xs tracking-widest">
+                  Cari Resi & Tandai Discrepancy
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Cari resi (min 2 karakter)..."
+                    value={searchQuery}
+                    onChange={(e) => handleSearchResi(e.target.value)}
+                    className="flex-1 px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 font-mono text-sm focus:outline-none focus:border-amber-500"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSearchResults([]);
+                      }}
+                      className="px-4 py-3 bg-stone-200 hover:bg-stone-300 rounded-xl text-sm font-medium"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Hasil Search */}
+                {searchResults.length > 0 && (
+                  <div className="max-h-60 overflow-y-auto space-y-1.5 border-t pt-3">
+                    {searchResults.map((item) => {
+                      const isMarked = discrepancyReasons[item.barcode_resi] !== undefined;
+                      const isDone = item.is_validated_handover && !isMarked;
+                      
+                      return (
+                        <div
+                          key={item.id}
+                          className={`flex items-center justify-between p-2.5 rounded-xl text-sm border ${
+                            isMarked
+                              ? "bg-red-50 border-red-200"
+                              : isDone
+                              ? "bg-emerald-50 border-emerald-200"
+                              : "bg-white border-stone-200"
+                          }`}
+                        >
+                          <span className="font-mono text-stone-800">{item.barcode_resi}</span>
+                          <div className="flex items-center gap-2">
+                            {isMarked ? (
+                              <span className="text-xs font-medium text-red-600">
+                                ⚠️ {discrepancyReasons[item.barcode_resi]}
+                              </span>
+                            ) : isDone ? (
+                              <span className="text-xs font-medium text-emerald-600">✅ DONE</span>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => handleMarkFromSearch(item.barcode_resi, "NOT_FOUND")}
+                                  className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold rounded-lg transition-colors active:scale-95"
+                                >
+                                  ❌ Not Found
+                                </button>
+                                <button
+                                  onClick={() => handleMarkFromSearch(item.barcode_resi, "CANCELLED")}
+                                  className="px-3 py-1.5 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 text-xs font-bold rounded-lg transition-colors active:scale-95"
+                                >
+                                  ⛔ Cancel
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {searchQuery && searchResults.length === 0 && (
+                  <div className="text-center py-4 text-sm text-stone-500">
+                    🔍 Resi "{searchQuery}" tidak ditemukan
+                  </div>
+                )}
+
+                {!searchQuery && (
+                  <div className="text-center py-4 text-sm text-stone-400">
+                    💡 Ketik minimal 2 karakter untuk mencari resi
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 🔥 LIST PAKET (Ringkasan) */}
+          <div className="max-h-40 overflow-y-auto space-y-1">
+            <div className="flex justify-between items-center px-1">
+              <p className="text-xs text-stone-400 font-medium">
+                {sessionItems.filter(i => !i.is_validated_handover).length} paket belum diverifikasi
+              </p>
+              {Object.keys(discrepancyReasons).length > 0 && (
+                <button
+                  onClick={handleResetAllDiscrepancy}
+                  className="text-[10px] text-red-500 hover:text-red-600 font-medium"
+                >
+                  🧹 Reset semua
+                </button>
+              )}
+            </div>
+            {/* Tampilkan 5 item teratas saja */}
+            {sessionItems.slice(0, 5).map((item) => {
               const isDiscrepancy = discrepancyReasons[item.barcode_resi] !== undefined;
-              
               return (
                 <div
                   key={item.id}
-                  className={`flex items-center justify-between p-2.5 rounded-xl text-sm border ${
+                  className={`flex items-center justify-between p-2 rounded-lg text-xs ${
                     item.is_validated_handover
                       ? isDiscrepancy
-                        ? "bg-red-50 border-red-200"
-                        : "bg-emerald-50 border-emerald-200"
-                      : "bg-white border-stone-200"
+                        ? "bg-red-50 text-red-700"
+                        : "bg-emerald-50 text-emerald-700"
+                      : "bg-white border border-stone-200"
                   }`}
                 >
-                  <span className="font-mono text-stone-800">{item.barcode_resi}</span>
-                  
-                  <div className="flex items-center gap-2">
-                    {item.is_validated_handover ? (
-                      <span className="text-xs font-medium text-emerald-600">
-                        {isDiscrepancy ? `⚠️ ${discrepancyReasons[item.barcode_resi]}` : "✅ DONE"}
-                      </span>
-                    ) : (
-                      <div className="flex gap-1.5">
-                        <button
-                          onClick={() => handleSetDiscrepancy(item.barcode_resi, "NOT_FOUND")}
-                          className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold rounded-lg transition-colors active:scale-95"
-                        >
-                          ❌ Not Found
-                        </button>
-                        <button
-                          onClick={() => handleSetDiscrepancy(item.barcode_resi, "CANCELLED")}
-                          className="px-3 py-1.5 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 text-xs font-bold rounded-lg transition-colors active:scale-95"
-                        >
-                          ⛔ Cancelled
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <span className="font-mono">{item.barcode_resi}</span>
+                  <span>
+                    {item.is_validated_handover 
+                      ? isDiscrepancy 
+                        ? `⚠️ ${discrepancyReasons[item.barcode_resi]}`
+                        : "✅ DONE"
+                      : "⏳ Pending"
+                    }
+                  </span>
                 </div>
               );
             })}
+            {sessionItems.length > 5 && (
+              <p className="text-[10px] text-stone-400 text-center">
+                + {sessionItems.length - 5} paket lainnya
+              </p>
+            )}
           </div>
 
+          {/* Tombol Lanjut */}
           <button
             onClick={() => setStep("trust")}
             disabled={
@@ -765,9 +1095,10 @@ export default function HandoverPage() {
               ? "📝 Lanjut ke Tanda Tangan (Semua Selesai)" 
               : Object.keys(discrepancyReasons).length > 0 
                 ? `📝 Lanjut ke Tanda Tangan (${Object.keys(discrepancyReasons).length} discrepancy)` 
-                : "⏳ Scan semua paket atau tandai discrepancy"}
+                : "⏳ Verifikasi semua paket atau tandai discrepancy"}
           </button>
 
+          {/* Info discrepancy */}
           {Object.keys(discrepancyReasons).length > 0 && (
             <div className="bg-red-50 border border-red-200 p-2.5 rounded-xl">
               <p className="text-xs text-red-600 font-medium">
