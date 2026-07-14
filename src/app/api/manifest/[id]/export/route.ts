@@ -3,8 +3,22 @@ import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
 import * as XLSX from 'xlsx';
 
-// 🔥 WAJIB: xlsx pakai Node.js API (Buffer dll), gagal kalau jalan di Edge Runtime
 export const runtime = 'nodejs';
+
+// 🔥 Format tanggal tanpa konversi (langsung dari database)
+function formatDateLocal(dateString: string | null | undefined): string {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  return date.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
 
 export async function GET(
   request: NextRequest,
@@ -35,13 +49,15 @@ export async function GET(
       );
     }
 
-    // Ambil manifest
+    // 🔥 AMBIL DATA DENGAN TIMEZONE WIB DARI DATABASE
     const manifest = await sql`
       SELECT 
         hm.*,
         ss.session_code,
         mt.transporter_name,
-        u.full_name as operator_name
+        u.full_name as operator_name,
+        -- 🔥 Konversi langsung di query SQL
+        hm.signed_at AT TIME ZONE 'Asia/Jakarta' as signed_at_wib
       FROM handover_manifests hm
       JOIN sorting_sessions ss ON ss.id = hm.session_id
       JOIN master_transporters mt ON mt.id = ss.transporter_id
@@ -56,15 +72,16 @@ export async function GET(
       );
     }
 
-    // Ambil history logs
+    // 🔥 AMBIL HISTORY LOGS DENGAN TIMEZONE WIB
     const historyLogs = await sql`
       SELECT 
         resi_number,
         status,
         sorting_by,
         handover_by,
-        sorting_at,
-        handover_at
+        -- 🔥 Konversi langsung di query SQL
+        sorting_at AT TIME ZONE 'Asia/Jakarta' as sorting_at_wib,
+        handover_at AT TIME ZONE 'Asia/Jakarta' as handover_at_wib
       FROM history_logs
       WHERE session_id = ${manifest[0].session_id}::UUID
       ORDER BY 
@@ -84,6 +101,7 @@ export async function GET(
     const totalCancel = historyLogs.filter((h: any) => h.status === 'CANCELLED').length;
     const totalNotFound = historyLogs.filter((h: any) => h.status === 'NOT_FOUND').length;
 
+    // 🔥 Gunakan signed_at_wib dari database
     const summaryData = [
       ['BUKTI SERAH TERIMA - HANDOVER MANIFEST'],
       [''],
@@ -93,7 +111,7 @@ export async function GET(
       ['Kurir', manifest[0].courier_name],
       ['Security', manifest[0].security_name],
       ['Vehicle Number', manifest[0].vehicle_number],
-      ['Signed At', new Date(manifest[0].signed_at).toLocaleString('id-ID')],
+      ['Signed At', formatDateLocal(manifest[0].signed_at_wib || manifest[0].signed_at)],
       [''],
       ['REKAPITULASI'],
       ['Total Paket', historyLogs.length],
@@ -122,8 +140,8 @@ export async function GET(
         statusLabel,
         log.sorting_by || '-',
         log.handover_by || '-',
-        log.sorting_at ? new Date(log.sorting_at).toLocaleString('id-ID') : '-',
-        log.handover_at ? new Date(log.handover_at).toLocaleString('id-ID') : '-',
+        formatDateLocal(log.sorting_at_wib || log.sorting_at),  // 🔥 Pakai sorting_at_wib
+        formatDateLocal(log.handover_at_wib || log.handover_at), // 🔥 Pakai handover_at_wib
       ]);
     });
 

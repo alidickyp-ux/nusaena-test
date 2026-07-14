@@ -39,26 +39,25 @@ export default function SortingPage() {
   const [selectedTransporterId, setSelectedTransporterId] = useState("");
 
   // 1. Ambil Sesi Running - PAKAI API SORTING KHUSUS
-        const fetchLiveSessions = useCallback(async () => {
-          try {
-            // 🔥 Gunakan API sorting, BUKAN handover
-            const res = await fetch("/api/sorting/sessions");
-            if (res.ok) {
-              const { sessions } = await res.json();
-              const formatted = sessions.map((s: any) => ({
-                id: s.id,
-                session_code: s.session_code,
-                transporter_name: s.transporter_name,
-                operator_name: s.operator_name,
-                total_items: Number(s.total_items || 0),
-                remaining_items: Number(s.remaining_items || 0),
-              }));
-              setActiveSessions(formatted);
-            }
-          } catch (err) {
-            console.error("Gagal memuat sesi running:", err);
-          }
-        }, []);// ✅ TANPA dependency
+  const fetchLiveSessions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/sorting/sessions");
+      if (res.ok) {
+        const { sessions } = await res.json();
+        const formatted = sessions.map((s: any) => ({
+          id: s.id,
+          session_code: s.session_code,
+          transporter_name: s.transporter_name,
+          operator_name: s.operator_name,
+          total_items: Number(s.total_items || 0),
+          remaining_items: Number(s.remaining_items || 0),
+        }));
+        setActiveSessions(formatted);
+      }
+    } catch (err) {
+      console.error("Gagal memuat sesi running:", err);
+    }
+  }, []);
 
   // 2. Ambil Master 3PL
   const fetchMaster3PL = useCallback(async () => {
@@ -71,7 +70,7 @@ export default function SortingPage() {
     } catch (err) {
       console.error("Gagal memuat master 3PL:", err);
     }
-  }, []); // ✅ TANPA dependency
+  }, []);
 
   // 3. INIT - Hanya dijalankan sekali
   useEffect(() => {
@@ -100,7 +99,7 @@ export default function SortingPage() {
     };
     init();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // ✅ HANYA dijalankan sekali
+  }, []);
 
   // 4. Update selectedManualSession ketika activeSessions berubah
   useEffect(() => {
@@ -109,7 +108,6 @@ export default function SortingPage() {
       if (current) {
         setSelectedManualSession(current);
       } else {
-        // Jika session sudah tidak ada, lepas lock
         setSelectedManualSession(null);
       }
     }
@@ -216,6 +214,11 @@ export default function SortingPage() {
     }, 2000);
   };
 
+  // 🔥 Tambahkan fungsi handleBack
+  const handleBack = () => {
+    router.push("/menu");
+  };
+
   // Loading state
   if (!isInitialized) {
     return (
@@ -236,15 +239,23 @@ export default function SortingPage() {
     <OperatorShell>
       <div className="p-4 space-y-4 font-sans text-[0.75rem] text-stone-700">
         
-        {/* HEADER */}
+        {/* HEADER - TAMBAHKAN TOMBOL ← Menu */}
         <div className="flex justify-between items-center px-1">
           <div>
             <p className="text-[0.65rem] text-stone-400 font-bold uppercase tracking-widest">Ops</p>
             <p className="font-extrabold text-lg text-stone-900 leading-tight">{operatorName}</p>
           </div>
-          <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-3 py-1.5 rounded-lg font-bold uppercase tracking-wide">
-            Sorting
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-3 py-1.5 rounded-lg font-bold uppercase tracking-wide">
+              Sorting
+            </span>
+            <button
+              onClick={handleBack}
+              className="text-xs bg-stone-100 hover:bg-stone-200 px-3 py-1.5 rounded-lg font-medium transition-colors"
+            >
+              ← Menu
+            </button>
+          </div>
         </div>
 
         {/* CONTROLLER MANUAL BATCH */}

@@ -279,76 +279,81 @@ export default function HandoverPage() {
   };
 
   // 🔥 Handle Discrepancy dari tombol di list (DIPERBAIKI - Sync dengan API)
-  const handleSetDiscrepancy = async (barcode: string, reason: "NOT_FOUND" | "CANCELLED") => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/handover/mark-discrepancy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: selectedSession?.id,
-          barcode: barcode,
-          reason: reason,
-        }),
+  // 🔥 Handle Discrepancy dari tombol di list (DIPERBAIKI - HAPUS DOUBLE COUNT)
+const handleSetDiscrepancy = async (barcode: string, reason: "NOT_FOUND" | "CANCELLED") => {
+  setLoading(true);
+  try {
+    const res = await fetch("/api/handover/mark-discrepancy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: selectedSession?.id,
+        barcode: barcode,
+        reason: reason,
+      }),
+    });
+
+    const result = await res.json();
+
+    if (res.ok && result.success) {
+      setDiscrepancyReasons(prev => {
+        const newReasons = { ...prev };
+        const isTogglingOff = newReasons[barcode] === reason;
+        
+        if (isTogglingOff) {
+          delete newReasons[barcode];
+          showToast.info(`✅ ${barcode} dibatalkan dari discrepancy`);
+          setSessionItems(prevItems => 
+            prevItems.map(item => 
+              item.barcode_resi === barcode 
+                ? { 
+                    ...item, 
+                    is_validated_handover: false, 
+                    discrepancy_reason: null,
+                    validated_by: null,
+                    validated_at: null
+                  }
+                : item
+            )
+          );
+          // 🔥 HANYA 1 KALI UPDATE progress (kondisi OFF)
+          setVerifyProgress(prev => ({
+            ...prev,
+            scanned: prev.scanned - 1
+          }));
+        } else {
+          newReasons[barcode] = reason;
+          showToast.info(`📝 ${barcode} → ${reason}`);
+          setSessionItems(prevItems => 
+            prevItems.map(item => 
+              item.barcode_resi === barcode 
+                ? { 
+                    ...item, 
+                    is_validated_handover: true, 
+                    discrepancy_reason: reason,
+                    validated_by: result.data?.validated_by || null,
+                    validated_at: result.data?.validated_at || null
+                  }
+                : item
+            )
+          );
+          // 🔥 HANYA 1 KALI UPDATE progress (kondisi ON)
+          setVerifyProgress(prev => ({
+            ...prev,
+            scanned: prev.scanned + 1
+          }));
+        }
+        return newReasons;
       });
-
-      const result = await res.json();
-
-      if (res.ok && result.success) {
-        setDiscrepancyReasons(prev => {
-          const newReasons = { ...prev };
-          if (newReasons[barcode] === reason) {
-            delete newReasons[barcode];
-            showToast.info(`✅ ${barcode} dibatalkan dari discrepancy`);
-            setSessionItems(prevItems => 
-              prevItems.map(item => 
-                item.barcode_resi === barcode 
-                  ? { 
-                      ...item, 
-                      is_validated_handover: false, 
-                      discrepancy_reason: null,
-                      validated_by: null,
-                      validated_at: null
-                    }
-                  : item
-              )
-            );
-            setVerifyProgress(prev => ({
-              ...prev,
-              scanned: prev.scanned - 1
-            }));
-          } else {
-            newReasons[barcode] = reason;
-            showToast.info(`📝 ${barcode} → ${reason}`);
-            setSessionItems(prevItems => 
-              prevItems.map(item => 
-                item.barcode_resi === barcode 
-                  ? { 
-                      ...item, 
-                      is_validated_handover: true, 
-                      discrepancy_reason: reason,
-                      validated_by: result.data?.validated_by || null,
-                      validated_at: result.data?.validated_at || null
-                    }
-                  : item
-              )
-            );
-            setVerifyProgress(prev => ({
-              ...prev,
-              scanned: prev.scanned + 1
-            }));
-          }
-          return newReasons;
-        });
-      } else {
-        showToast.error(result.message || "Gagal menandai discrepancy");
-      }
-    } catch (error) {
-      showToast.error("Error marking discrepancy");
-    } finally {
-      setLoading(false);
+    } else {
+      showToast.error(result.message || "Gagal menandai discrepancy");
     }
-  };
+  } catch (error) {
+    showToast.error("Error marking discrepancy");
+  } finally {
+    setLoading(false);
+  }
+};
 
   // 🔥 Fungsi untuk mencari resi (Search & Tandai)
   const handleSearchResi = (query: string) => {
@@ -365,80 +370,85 @@ export default function HandoverPage() {
   };
 
   // 🔥 Fungsi untuk menandai dari hasil search (DIPERBAIKI - Sync dengan API)
-  const handleMarkFromSearch = async (barcode: string, reason: "NOT_FOUND" | "CANCELLED") => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/handover/mark-discrepancy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: selectedSession?.id,
-          barcode: barcode,
-          reason: reason,
-        }),
+  // 🔥 Fungsi untuk menandai dari hasil search (DIPERBAIKI - HAPUS DOUBLE COUNT)
+const handleMarkFromSearch = async (barcode: string, reason: "NOT_FOUND" | "CANCELLED") => {
+  setLoading(true);
+  try {
+    const res = await fetch("/api/handover/mark-discrepancy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: selectedSession?.id,
+        barcode: barcode,
+        reason: reason,
+      }),
+    });
+
+    const result = await res.json();
+
+    if (res.ok && result.success) {
+      setDiscrepancyReasons(prev => {
+        const newReasons = { ...prev };
+        const isTogglingOff = newReasons[barcode] === reason;
+        
+        if (isTogglingOff) {
+          delete newReasons[barcode];
+          showToast.info(`✅ ${barcode} dibatalkan dari discrepancy`);
+          setSessionItems(prevItems => 
+            prevItems.map(item => 
+              item.barcode_resi === barcode 
+                ? { 
+                    ...item, 
+                    is_validated_handover: false, 
+                    discrepancy_reason: null,
+                    validated_by: null,
+                    validated_at: null
+                  }
+                : item
+            )
+          );
+          // 🔥 HANYA 1 KALI UPDATE progress (kondisi OFF)
+          setVerifyProgress(prev => ({
+            ...prev,
+            scanned: prev.scanned - 1
+          }));
+        } else {
+          newReasons[barcode] = reason;
+          showToast.info(`📝 ${barcode} → ${reason}`);
+          setSessionItems(prevItems => 
+            prevItems.map(item => 
+              item.barcode_resi === barcode 
+                ? { 
+                    ...item, 
+                    is_validated_handover: true, 
+                    discrepancy_reason: reason,
+                    validated_by: result.data?.validated_by || null,
+                    validated_at: result.data?.validated_at || null
+                  }
+                : item
+            )
+          );
+          // 🔥 HANYA 1 KALI UPDATE progress (kondisi ON)
+          setVerifyProgress(prev => ({
+            ...prev,
+            scanned: prev.scanned + 1
+          }));
+        }
+        return newReasons;
       });
 
-      const result = await res.json();
-
-      if (res.ok && result.success) {
-        setDiscrepancyReasons(prev => {
-          const newReasons = { ...prev };
-          if (newReasons[barcode] === reason) {
-            delete newReasons[barcode];
-            showToast.info(`✅ ${barcode} dibatalkan dari discrepancy`);
-            setSessionItems(prevItems => 
-              prevItems.map(item => 
-                item.barcode_resi === barcode 
-                  ? { 
-                      ...item, 
-                      is_validated_handover: false, 
-                      discrepancy_reason: null,
-                      validated_by: null,
-                      validated_at: null
-                    }
-                  : item
-              )
-            );
-            setVerifyProgress(prev => ({
-              ...prev,
-              scanned: prev.scanned - 1
-            }));
-          } else {
-            newReasons[barcode] = reason;
-            showToast.info(`📝 ${barcode} → ${reason}`);
-            setSessionItems(prevItems => 
-              prevItems.map(item => 
-                item.barcode_resi === barcode 
-                  ? { 
-                      ...item, 
-                      is_validated_handover: true, 
-                      discrepancy_reason: reason,
-                      validated_by: result.data?.validated_by || null,
-                      validated_at: result.data?.validated_at || null
-                    }
-                  : item
-              )
-            );
-            setVerifyProgress(prev => ({
-              ...prev,
-              scanned: prev.scanned + 1
-            }));
-          }
-          return newReasons;
-        });
-
-        // Clear search
-        setSearchQuery("");
-        setSearchResults([]);
-      } else {
-        showToast.error(result.message || "Gagal menandai discrepancy");
-      }
-    } catch (error) {
-      showToast.error("Error marking discrepancy");
-    } finally {
-      setLoading(false);
+      // Clear search
+      setSearchQuery("");
+      setSearchResults([]);
+    } else {
+      showToast.error(result.message || "Gagal menandai discrepancy");
     }
-  };
+  } catch (error) {
+    showToast.error("Error marking discrepancy");
+  } finally {
+    setLoading(false);
+  }
+};
 
   // 🔥 Reset semua discrepancy (DIPERBAIKI)
   const handleResetAllDiscrepancy = async () => {
@@ -606,7 +616,7 @@ export default function HandoverPage() {
     const totalDone = doneSessions.length;
 
     return (
-      <OperatorShell>
+      <OperatorShell>  {/* 🔥 Tampilkan navigasi */}
         <div className="p-4 space-y-4">
           <div className="flex items-center justify-between">
             <div>
