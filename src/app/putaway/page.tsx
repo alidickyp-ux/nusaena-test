@@ -96,7 +96,7 @@ export default function PutawayPage() {
   };
 
   return (
-     <OperatorShell hideNav={true}>
+     <OperatorShell>
       <div className="p-4 space-y-4">
         <div className="flex items-center justify-between">
           <div>

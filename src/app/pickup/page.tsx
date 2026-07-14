@@ -206,7 +206,7 @@ export default function PickupPage() {
   // =============================================
   if (step === "search") {
     return (
-       <OperatorShell hideNav={true}>  {/* 🔥 Sembunyi navigasi */}
+       <OperatorShell>  {/* 🔥 Sembunyi navigasi */}
       <div className="p-4 space-y-4">
           <div className="flex items-center justify-between">
             <div>
