@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+export const dynamic = 'force-dynamic';
+
 
 // GET /api/handover/detail?sessionId=xxx
 // Ambil info sesi + daftar semua resi (matched maupun belum) untuk sesi tsb.

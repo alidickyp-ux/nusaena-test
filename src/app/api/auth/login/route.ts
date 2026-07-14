@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { sql } from '@/lib/db';
 import { signSession, SESSION_COOKIE_NAME } from '@/lib/auth';
+export const dynamic = 'force-dynamic';
+
 
 export async function POST(request: Request) {
   try {

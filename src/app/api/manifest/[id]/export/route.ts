@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
 import * as XLSX from 'xlsx';
+export const dynamic = 'force-dynamic';
+
 
 export const runtime = 'nodejs';
 

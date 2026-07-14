@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
+export const dynamic = 'force-dynamic';
+
 
 // PUT: Update 3PL
 export async function PUT(

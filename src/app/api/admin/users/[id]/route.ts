@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
+export const dynamic = 'force-dynamic';
+
 
 // PUT: Update user
 export async function PUT(
