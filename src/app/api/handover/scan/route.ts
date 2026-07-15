@@ -3,7 +3,6 @@ import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
 export const dynamic = 'force-dynamic';
 
-
 export async function POST(request: NextRequest) {
   try {
     const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;

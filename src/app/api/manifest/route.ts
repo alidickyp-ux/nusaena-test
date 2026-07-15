@@ -3,7 +3,6 @@ import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
 export const dynamic = 'force-dynamic';
 
-
 export async function GET(request: NextRequest) {
   try {
     const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -22,14 +21,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (userSession.role !== 'ADMIN') {
-      return NextResponse.json(
-        { success: false, message: 'Forbidden - Admin only' },
-        { status: 403 }
-      );
-    }
-
-    // 🔥 Ambil semua manifest yang sudah ditandatangani, terbaru dulu
+    // 🔥 QUERY LANGSUNG - PASTIKAN DATA TERBARU
     const manifests = await sql`
       SELECT 
         hm.id,
@@ -44,15 +36,25 @@ export async function GET(request: NextRequest) {
         mt.transporter_name,
         u.full_name as operator_name
       FROM handover_manifests hm
-      JOIN sorting_sessions ss ON ss.id = hm.session_id
-      JOIN master_transporters mt ON mt.id = ss.transporter_id
-      JOIN users u ON u.id = ss.operator_id
+      LEFT JOIN sorting_sessions ss ON ss.id = hm.session_id
+      LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+      LEFT JOIN users u ON u.id = ss.operator_id
       ORDER BY hm.signed_at DESC
     `;
+
+    // 🔥 LOG UNTUK DEBUG
+    console.log(`📊 Manifest found: ${manifests.length}`);
 
     return NextResponse.json({
       success: true,
       data: manifests,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store',
+      },
     });
 
   } catch (error) {

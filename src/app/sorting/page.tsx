@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import OperatorShell from "@/components/mobile/OperatorShell";
 import { playAcceptedSound, playRejectedSound } from "@/lib/sound";
+import { showToast } from "@/lib/toast";
 
 interface ActiveSession {
   id: string;
@@ -24,6 +25,7 @@ interface Master3PL {
 
 export default function SortingPage() {
   const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [operatorId, setOperatorId] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [barcode, setBarcode] = useState("");
@@ -32,18 +34,30 @@ export default function SortingPage() {
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState({ text: "", type: "" });
   const [isInitialized, setIsInitialized] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [forceRefresh, setForceRefresh] = useState(0);
 
   // State Kontrol Kunci Sesi Manual
   const [selectedManualSession, setSelectedManualSession] = useState<ActiveSession | null>(null);
   const [selectedTransporterId, setSelectedTransporterId] = useState("");
 
-  // 1. Ambil Sesi Running - PAKAI API SORTING KHUSUS
+  // 🔥 FETCH SESSIONS - dengan cache buster
   const fetchLiveSessions = useCallback(async () => {
     try {
-      const res = await fetch("/api/sorting/sessions");
+      console.log("🔄 Fetching sessions...");
+      // 🔥 Tambahkan timestamp untuk bypass cache
+      const res = await fetch(`/api/sorting/sessions?_=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
+      });
+      
       if (res.ok) {
         const { sessions } = await res.json();
+        console.log("📦 Sessions received:", sessions);
+        
         const formatted = sessions.map((s: any) => ({
           id: s.id,
           session_code: s.session_code,
@@ -52,11 +66,14 @@ export default function SortingPage() {
           total_items: Number(s.total_items || 0),
           remaining_items: Number(s.remaining_items || 0),
         }));
+        
         setActiveSessions(formatted);
+        return formatted;
       }
     } catch (err) {
       console.error("Gagal memuat sesi running:", err);
     }
+    return [];
   }, []);
 
   // 2. Ambil Master 3PL
@@ -101,6 +118,42 @@ export default function SortingPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 🔥 REALTIME POLLING - Update setiap 2 detik (lebih cepat)
+  useEffect(() => {
+    if (!isInitialized) return;
+    
+    const interval = setInterval(() => {
+      fetchLiveSessions();
+    }, 2000); // 2 detik
+    
+    return () => clearInterval(interval);
+  }, [isInitialized, fetchLiveSessions]);
+
+  // 🔥 Focus/Visibility handler
+  useEffect(() => {
+    if (!isInitialized) return;
+    
+    const handleFocus = () => {
+      console.log("📱 Window focused, refreshing...");
+      fetchLiveSessions();
+    };
+    
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        console.log("📱 Tab visible, refreshing...");
+        fetchLiveSessions();
+      }
+    };
+    
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [isInitialized, fetchLiveSessions]);
+
   // 4. Update selectedManualSession ketika activeSessions berubah
   useEffect(() => {
     if (selectedManualSession && activeSessions.length > 0) {
@@ -112,6 +165,16 @@ export default function SortingPage() {
       }
     }
   }, [activeSessions, selectedManualSession]);
+
+  // 🔥 Pull to Refresh - Manual Refresh
+  const handleManualRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    showToast.info("🔄 Memperbarui data...");
+    await fetchLiveSessions();
+    setIsRefreshing(false);
+    showToast.success("✅ Data diperbarui");
+  };
 
   // 5. Trigger Pembuatan Sesi Manual
   const handleCreateManualSession = async () => {
@@ -143,7 +206,10 @@ export default function SortingPage() {
           text: `✅ Sesi manual ${result.session_code} dibuka!`, 
           type: "success" 
         });
-        await fetchLiveSessions();
+        // 🔥 Tunggu sebentar lalu refresh
+        setTimeout(async () => {
+          await fetchLiveSessions();
+        }, 500);
         setSelectedTransporterId("");
       } else {
         setStatusMsg({ 
@@ -192,7 +258,10 @@ export default function SortingPage() {
       } else {
         playAcceptedSound();
         setStatusMsg({ text: result.message, type: "success" });
-        await fetchLiveSessions();
+        // 🔥 Refresh setelah scan dengan delay
+        setTimeout(async () => {
+          await fetchLiveSessions();
+        }, 300);
       }
     } catch (err) {
       playRejectedSound();
@@ -214,7 +283,6 @@ export default function SortingPage() {
     }, 2000);
   };
 
-  // 🔥 Tambahkan fungsi handleBack
   const handleBack = () => {
     router.push("/menu");
   };
@@ -239,13 +307,23 @@ export default function SortingPage() {
     <OperatorShell>
       <div className="p-4 space-y-4 font-sans text-[0.75rem] text-stone-700">
         
-        {/* HEADER - TAMBAHKAN TOMBOL ← Menu */}
+        {/* HEADER */}
         <div className="flex justify-between items-center px-1">
           <div>
             <p className="text-[0.65rem] text-stone-400 font-bold uppercase tracking-widest">Ops</p>
             <p className="font-extrabold text-lg text-stone-900 leading-tight">{operatorName}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className={`text-xs bg-stone-100 hover:bg-stone-200 px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                isRefreshing ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              title="Refresh data"
+            >
+              {isRefreshing ? '⏳' : '🔄'}
+            </button>
             <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-3 py-1.5 rounded-lg font-bold uppercase tracking-wide">
               Sorting
             </span>
@@ -256,6 +334,23 @@ export default function SortingPage() {
               ← Menu
             </button>
           </div>
+        </div>
+
+        {/* Indikator Live */}
+        <div className="flex items-center gap-2 px-1">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span className="text-[10px] text-stone-400">Live</span>
+          <span className="text-[10px] text-stone-300">·</span>
+          <span className="text-[10px] text-stone-400">
+            {activeSessions.length} session aktif
+          </span>
+          <span className="text-[10px] text-stone-300">·</span>
+          <span className="text-[10px] text-stone-400">
+            {activeSessions.reduce((acc, s) => acc + s.total_items, 0)} total paket
+          </span>
         </div>
 
         {/* CONTROLLER MANUAL BATCH */}

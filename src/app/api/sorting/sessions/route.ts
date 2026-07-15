@@ -3,7 +3,6 @@ import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
 export const dynamic = 'force-dynamic';
 
-
 export async function GET(request: NextRequest) {
   try {
     const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -22,7 +21,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 🔥 Tampilkan SEMUA session RUNNING (termasuk yang kosong)
+    // 🔥 Query dengan waktu sekarang untuk bypass cache
     const sessions = await sql`
       SELECT 
         ss.id,
@@ -48,9 +47,18 @@ export async function GET(request: NextRequest) {
       ORDER BY ss.created_at DESC
     `;
 
+    // 🔥 Tambahkan timestamp untuk bypass cache
     return NextResponse.json({
       success: true,
       sessions: sessions,
+      _timestamp: Date.now(), // Bypass cache
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store',
+      },
     });
 
   } catch (error) {

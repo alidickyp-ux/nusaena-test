@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
           ip.location_code,
           ip.status,
           ip.putaway_at,
-          u.full_name as putaway_by,
+          u.full_name as putaway_by_name,
           ss.session_code,
           mt.transporter_name
         FROM public.instant_packages ip

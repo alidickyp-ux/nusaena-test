@@ -1,9 +1,9 @@
 // Feedback suara scan diterima/ditolak — Web Audio API murni, tanpa file
 // audio eksternal, supaya ringan & tetap jalan walau PWA offline.
 //
-// Versi ini dibuat lebih JELAS terdengar dibanding sebelumnya:
-// - accepted: 1 nada tunggal ceria, cukup panjang & lebih kencang
-// - rejected: 2 nada rendah beruntun dengan jeda, pola "buzzer" yang lebih tegas
+// Versi Optimasi Gudang (COOL SYSTEM V3):
+// - accepted: 1 nada tinggi ganda (ding-ding cepat), sangat bersih, ceria & tegas.
+// - rejected: Pola alarm buzzer berat durasi panjang (tiiit-tiiit kasar), disonan & kontras.
 
 let audioCtx: AudioContext | null = null;
 
@@ -29,27 +29,42 @@ function beep(freq: number, duration: number, type: OscillatorType, volume: numb
     osc.type = type;
     osc.frequency.setValueAtTime(freq, startAt);
 
+    // Fade-in super cepat untuk menghilangkan bunyi klik statis digital
     gain.gain.setValueAtTime(0.0001, startAt);
-    gain.gain.exponentialRampToValueAtTime(volume, startAt + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+    gain.gain.linearRampToValueAtTime(volume, startAt + 0.01);
+    
+    // Kurva rampa linear agar sustain suara penuh sepanjang durasi (tidak langsung drop)
+    gain.gain.setValueAtTime(volume, startAt + duration - 0.02);
+    gain.gain.linearRampToValueAtTime(0.0001, startAt + duration);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
 
     osc.start(startAt);
-    osc.stop(startAt + duration + 0.02);
+    osc.stop(startAt + duration + 0.01);
   } catch {
-    // Suara bukan hal kritis -- kalau browser block/AudioContext gagal, diamkan saja.
+    // Silent fail jika web audio diblokir browser
   }
 }
 
-/** Resi diterima / match -- 1 nada bersih & cukup kencang supaya jelas kedengaran di lapangan */
+/** * Resi diterima / match 
+ * Menggunakan 2 nada harmonis cepat (C6 ke E6) dalam waktu singkat.
+ * Menghasilkan bunyi "ding-ding" jernih khas kasir modern.
+ */
 export function playAcceptedSound() {
-  beep(1046.5, 0.18, 'sine', 0.35); // C6, jernih & tegas
+  beep(1046.50, 0.07, 'sine', 0.25, 0);    // C6 (Cepat)
+  beep(1318.51, 0.12, 'sine', 0.25, 0.06); // E6 (Sustain sedikit)
 }
 
-/** Resi ditolak / duplikat / salah -- 2 nada rendah beruntun, pola "buzzer" jelas berbeda dari accepted */
+/** * Resi ditolak / duplikat / salah 
+ * Menggunakan 2 pulsa panjang gelombang 'square' frekuensi rendah-menengah (Buzzer Berat).
+ * Pola ditiup panjang: "BZZZTT... BZZZTT..." dengan total durasi setengah detik lebih.
+ * Disonan di telinga agar operator langsung sadar tanpa melihat layar HP.
+ */
 export function playRejectedSound() {
-  beep(196, 0.16, 'sawtooth', 0.3, 0);
-  beep(146.8, 0.22, 'sawtooth', 0.3, 0.18);
+  // Pulsa Buzzer Pertama (Lebih panjang dan kasar)
+  beep(180, 0.22, 'square', 0.35, 0);
+  
+  // Pulsa Buzzer Kedua (Sedikit lebih rendah, memberi efek turun/salah)
+  beep(150, 0.28, 'square', 0.35, 0.26);
 }

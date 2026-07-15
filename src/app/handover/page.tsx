@@ -64,7 +64,7 @@ export default function HandoverPage() {
   // Fetch sessions
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await fetch("/api/handover/sessions");
+      const res = await fetch("/api/handover/sessions", { cache: "no-store" });
       if (res.ok) {
         const { sessions } = await res.json();
         const formatted = sessions.map((s: any) => ({
@@ -103,6 +103,21 @@ export default function HandoverPage() {
 
   useEffect(() => {
     fetchSessions();
+  }, [fetchSessions]);
+
+  // 🔥 Resync list kalau tab ditinggal lama lalu dibuka lagi / balik fokus,
+  // supaya angka remaining/validated tidak nyangkut di data lama.
+  useEffect(() => {
+    const handleFocus = () => fetchSessions();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") fetchSessions();
+    };
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [fetchSessions]);
 
   // Filter sessions
@@ -156,10 +171,19 @@ export default function HandoverPage() {
         setSelectedSession(session);
         
         try {
-          const res = await fetch(`/api/handover/detail/${session.id}`);
+          const res = await fetch(`/api/handover/detail/${session.id}`, { cache: "no-store" });
           if (res.ok) {
             const data = await res.json();
             setSessionItems(data.items || []);
+            
+            // 🔥 Sync discrepancyReasons dari database — tanpa ini, list bisa
+            // tampil "DONE" padahal sebenarnya discrepancy (data.items sudah
+            // benar tapi render bergantung ke state terpisah ini)
+            const reasons: Record<string, string> = {};
+            data.items.forEach((item: HandoverItem) => {
+              if (item.discrepancy_reason) reasons[item.barcode_resi] = item.discrepancy_reason;
+            });
+            setDiscrepancyReasons(reasons);
             
             const scanned = data.items.filter((i: HandoverItem) => i.is_validated_handover).length;
             setVerifyProgress({
@@ -189,10 +213,17 @@ export default function HandoverPage() {
     setSelectedSession(session);
     
     try {
-      const res = await fetch(`/api/handover/detail/${session.id}`);
+      const res = await fetch(`/api/handover/detail/${session.id}`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setSessionItems(data.items || []);
+        
+        // 🔥 Sync discrepancyReasons dari database — sama seperti di jalur "done" tab
+        const reasons: Record<string, string> = {};
+        data.items.forEach((item: HandoverItem) => {
+          if (item.discrepancy_reason) reasons[item.barcode_resi] = item.discrepancy_reason;
+        });
+        setDiscrepancyReasons(reasons);
         
         const scanned = data.items.filter((i: HandoverItem) => i.is_validated_handover).length;
         setVerifyProgress({
@@ -268,6 +299,32 @@ export default function HandoverPage() {
       } else {
         playRejectedSound();
         showToast.error(result.message || "Barcode tidak valid");
+
+        // 🔥 Kalau server bilang "sudah discan sebelumnya", state lokal kita basi
+        // (misalnya divalidasi dari tab/device lain). Sinkronkan ulang dari server
+        // supaya kartu tidak nyangkut di angka lama.
+        if (
+          typeof result.message === "string" &&
+          result.message.toLowerCase().includes("sudah discan")
+        ) {
+          try {
+            const detailRes = await fetch(`/api/handover/detail/${selectedSession?.id}`);
+            if (detailRes.ok) {
+              const detailData = await detailRes.json();
+              setSessionItems(detailData.items || []);
+              const scanned = detailData.items.filter(
+                (i: HandoverItem) => i.is_validated_handover
+              ).length;
+              setVerifyProgress({
+                scanned,
+                total: detailData.items.length,
+              });
+              showToast.info("🔄 Data disinkronkan ulang dari server");
+            }
+          } catch {
+            // Diamkan; toast error di atas sudah cukup memberi tahu user
+          }
+        }
       }
     } catch (error) {
       showToast.error("Error scanning barcode");
@@ -980,7 +1037,7 @@ const handleMarkFromSearch = async (barcode: string, reason: "NOT_FOUND" | "CANC
                 {searchResults.length > 0 && (
                   <div className="max-h-60 overflow-y-auto space-y-1.5 border-t pt-3">
                     {searchResults.map((item) => {
-                      const isMarked = discrepancyReasons[item.barcode_resi] !== undefined;
+                      const isMarked = item.discrepancy_reason !== null;
                       const isDone = item.is_validated_handover && !isMarked;
                       
                       return (
@@ -998,7 +1055,7 @@ const handleMarkFromSearch = async (barcode: string, reason: "NOT_FOUND" | "CANC
                           <div className="flex items-center gap-2">
                             {isMarked ? (
                               <span className="text-xs font-medium text-red-600">
-                                ⚠️ {discrepancyReasons[item.barcode_resi]}
+                                ⚠️ {item.discrepancy_reason}
                               </span>
                             ) : isDone ? (
                               <span className="text-xs font-medium text-emerald-600">✅ DONE</span>
@@ -1057,7 +1114,7 @@ const handleMarkFromSearch = async (barcode: string, reason: "NOT_FOUND" | "CANC
             </div>
             {/* Tampilkan 5 item teratas saja */}
             {sessionItems.slice(0, 5).map((item) => {
-              const isDiscrepancy = discrepancyReasons[item.barcode_resi] !== undefined;
+              const isDiscrepancy = item.discrepancy_reason !== null;
               return (
                 <div
                   key={item.id}
@@ -1073,7 +1130,7 @@ const handleMarkFromSearch = async (barcode: string, reason: "NOT_FOUND" | "CANC
                   <span>
                     {item.is_validated_handover 
                       ? isDiscrepancy 
-                        ? `⚠️ ${discrepancyReasons[item.barcode_resi]}`
+                        ? `⚠️ ${item.discrepancy_reason}`
                         : "✅ DONE"
                       : "⏳ Pending"
                     }

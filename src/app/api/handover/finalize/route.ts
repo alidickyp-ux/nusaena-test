@@ -3,9 +3,9 @@ import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
 export const dynamic = 'force-dynamic';
 
-
 export async function POST(request: NextRequest) {
   try {
+    // 1. Validasi session
     const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
     if (!sessionToken) {
       return NextResponse.json(
@@ -22,10 +22,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 2. Parse request body
     const body = await request.json();
     const {
       session_id,
-      mode, // 'trust' or 'verify'
+      mode,
       courier_name,
       security_name,
       vehicle_number,
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
       discrepancy_reasons,
     } = body;
 
-    // Validasi
+    // 3. Validasi input
     if (!session_id || !courier_name || !security_name || !vehicle_number) {
       return NextResponse.json(
         { success: false, message: 'Semua field wajib diisi' },
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Cek session
+    // 4. Cek session
     const sessionCheck = await sql`
       SELECT 
         ss.id, 
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
 
     if (sessionCheck.length === 0) {
       return NextResponse.json(
-        { success: false, message: 'Session not found' },
+        { success: false, message: 'Session tidak ditemukan' },
         { status: 404 }
       );
     }
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
         WHERE session_id = ${session_id}::UUID
       `;
 
-      // 2. 🔥 INSERT INTO HISTORY LOGS - SEMUA DONE
+      // 2. Insert history logs - semua DONE
       await sql`
         INSERT INTO history_logs (
           session_id,
@@ -172,10 +173,11 @@ export async function POST(request: NextRequest) {
     }
 
     // =============================================
-    // MODE VERIFY: Scan ulang, ada discrepancy
+    // MODE VERIFY: Ada discrepancy
     // =============================================
     if (mode === 'verify') {
-      // 1. Paket yang sudah discan → DONE
+      // Step 1: Update paket yang BELUM divalidasi dan BELUM ada discrepancy
+      // Kondisi: is_validated_handover = false AND discrepancy_reason IS NULL
       await sql`
         UPDATE sorting_details
         SET 
@@ -184,10 +186,19 @@ export async function POST(request: NextRequest) {
           validated_at = NOW(),
           discrepancy_reason = NULL
         WHERE session_id = ${session_id}::UUID
-          AND is_validated_handover = true
+          AND is_validated_handover = false
+          AND discrepancy_reason IS NULL
       `;
 
-      // 2. Paket yang belum discan → NOT_FOUND / CANCELLED
+      // Step 2: Paket yang SUDAH ditandai discrepancy (dari handleSetDiscrepancy)
+      // Statusnya sudah:
+      // - is_validated_handover = true
+      // - discrepancy_reason = 'NOT_FOUND' atau 'CANCELLED'
+      // - validated_by dan validated_at sudah terisi
+      // Tidak perlu diupdate lagi, biarkan apa adanya
+
+      // Step 3: Fallback - jika ada discrepancy_reasons dari frontend
+      // (Untuk jaga-jaga jika ada data yang belum terupdate)
       if (discrepancy_reasons && Object.keys(discrepancy_reasons).length > 0) {
         for (const [barcode, reason] of Object.entries(discrepancy_reasons)) {
           await sql`
@@ -203,7 +214,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 3. 🔥 INSERT INTO HISTORY LOGS - DONE, NOT_FOUND, CANCELLED
+      // Step 4: Insert history logs
       await sql`
         INSERT INTO history_logs (
           session_id,
@@ -226,15 +237,15 @@ export async function POST(request: NextRequest) {
           NOW(),
           ${courier_name},
           CASE 
-            WHEN sd.discrepancy_reason IS NULL THEN 'DONE'
-            ELSE sd.discrepancy_reason
+            WHEN sd.discrepancy_reason IS NOT NULL THEN sd.discrepancy_reason
+            ELSE 'DONE'
           END
         FROM sorting_details sd
         LEFT JOIN users u ON u.id = sd.sorting_by
         WHERE sd.session_id = ${session_id}::UUID
       `;
 
-      // 4. Hitung stats
+      // Step 5: Hitung stats
       const stats = await sql`
         SELECT 
           COUNT(*) as total,
@@ -247,7 +258,7 @@ export async function POST(request: NextRequest) {
 
       const totalDiscrepancy = Number(stats[0].not_found) + Number(stats[0].cancelled);
 
-      // 5. Insert manifest dengan discrepancy
+      // Step 6: Insert manifest
       await sql`
         INSERT INTO handover_manifests (
           session_id,
@@ -274,7 +285,7 @@ export async function POST(request: NextRequest) {
         )
       `;
 
-      // 6. Close session
+      // Step 7: Close session
       await sql`
         UPDATE sorting_sessions 
         SET status = 'CLOSED', closed_at = NOW()

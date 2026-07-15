@@ -3,7 +3,6 @@ import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
 export const dynamic = 'force-dynamic';
 
-
 export async function POST(request: NextRequest) {
   try {
     const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -32,15 +31,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validasi reason
     if (!['NOT_FOUND', 'CANCELLED'].includes(reason)) {
       return NextResponse.json(
-        { success: false, message: 'Invalid reason. Must be NOT_FOUND or CANCELLED' },
+        { success: false, message: 'Invalid reason' },
         { status: 400 }
       );
     }
 
-    // Cek apakah barcode ada di session
+    // Cek barcode di session
     const existing = await sql`
       SELECT id, is_validated_handover, discrepancy_reason
       FROM sorting_details
@@ -50,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     if (existing.length === 0) {
       return NextResponse.json(
-        { success: false, message: 'Barcode tidak ditemukan di session ini' },
+        { success: false, message: 'Barcode tidak ditemukan' },
         { status: 404 }
       );
     }
@@ -59,13 +57,13 @@ export async function POST(request: NextRequest) {
     let is_validated_handover = true;
     let discrepancy_reason = reason;
 
-    // Jika sudah ada discrepancy yang sama, batalkan (toggle)
+    // Toggle: jika sudah ada discrepancy yang sama, batalkan
     if (current.discrepancy_reason === reason) {
       is_validated_handover = false;
       discrepancy_reason = null;
     }
 
-    // Update sorting_details dengan validated_by dan validated_at
+    // 🔥 Update database
     const updated = await sql`
       UPDATE sorting_details
       SET 
