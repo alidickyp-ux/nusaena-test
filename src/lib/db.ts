@@ -1,9 +1,16 @@
 // Koneksi ke Neon lewat driver serverless resmi mereka.
-// Bisa dipakai baik di Node runtime (API routes) maupun Edge runtime.
 import { neon } from '@neondatabase/serverless';
 
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL belum di-set di .env.local');
-}
+// 🔥 Jangan throw error di build time
+// Gunakan ternary untuk fallback
+const connectionString = process.env.DATABASE_URL;
 
-export const sql = neon(process.env.DATABASE_URL);
+// 🔥 Export function yang akan di-resolve di runtime
+export const sql = connectionString 
+  ? neon(connectionString) 
+  : (async () => {
+      throw new Error('DATABASE_URL belum di-set');
+    }) as any;
+
+// 🔥 Tambahkan log untuk debug di Vercel
+console.log('🔗 DATABASE_URL:', process.env.DATABASE_URL ? '✅ Set' : '❌ Missing');

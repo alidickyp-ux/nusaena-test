@@ -9,9 +9,6 @@ const withPWA = require('next-pwa')({
   },
   runtimeCaching: [
     // 🔥 WAJIB PALING ATAS: semua request ke /api/* JANGAN pernah di-cache.
-    // Data session/status harus selalu fresh dari server, bukan dari
-    // Service Worker cache — kalau tidak, sesi yang sudah CLOSED/di-handover
-    // bisa tetap muncul basi walau sudah hard refresh.
     {
       urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
       handler: 'NetworkOnly',
@@ -25,11 +22,11 @@ const withPWA = require('next-pwa')({
         cacheName: 'image-cache',
         expiration: {
           maxEntries: 100,
-          maxAgeSeconds: 30 * 24 * 60 * 60, // 30 hari
+          maxAgeSeconds: 30 * 24 * 60 * 60,
         },
       },
     },
-    // JS/CSS build assets — StaleWhileRevalidate: cepat tampil, tetap update di background
+    // JS/CSS build assets
     {
       urlPattern: /^https?.*\.(?:js|css)$/,
       handler: 'StaleWhileRevalidate',
@@ -37,8 +34,7 @@ const withPWA = require('next-pwa')({
         cacheName: 'static-resources',
       },
     },
-    // Sisanya (halaman/navigasi) — NetworkFirst dengan timeout,
-    // supaya kalau network mati baru fallback ke cache, bukan langsung diam-diam pakai cache.
+    // Sisanya — NetworkFirst
     {
       urlPattern: /^https?.*/,
       handler: 'NetworkFirst',
@@ -62,6 +58,10 @@ const nextConfig = {
   },
   eslint: {
     ignoreDuringBuilds: false,
+  },
+  // 🔥 TAMBAHKAN: Pastikan env tersedia saat build
+  env: {
+    DATABASE_URL: process.env.DATABASE_URL || '',
   },
 };
 
