@@ -15,6 +15,7 @@ const withPWA = require('next-pwa')({
     {
       urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
       handler: 'NetworkOnly',
+      options: {},
     },
     // Asset gambar/icon — aman di-cache lama untuk offline
     {
@@ -55,9 +56,6 @@ const withPWA = require('next-pwa')({
 const nextConfig = {
   images: {
     domains: ['avatars.githubusercontent.com'],
-  },
-  experimental: {
-    serverActions: true,
   },
   typescript: {
     ignoreBuildErrors: false,
