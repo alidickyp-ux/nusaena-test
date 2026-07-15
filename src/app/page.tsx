@@ -91,7 +91,7 @@ export default function LoginPage() {
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-700 text-white text-2xl font-bold mb-4 shadow-lg shadow-indigo-200">
               C
             </div>
-            <h1 className="text-2xl font-bold text-slate-800">COOL System V3</h1>
+            <h1 className="text-2xl font-bold text-slate-800">Nusaena v1</h1>
             <p className="text-sm text-slate-500 mt-1">Sorting &amp; Handover Management</p>
           </div>
 

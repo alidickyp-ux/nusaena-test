@@ -57,7 +57,7 @@ export default function MenuPage() {
       {/* Header */}
       <div className="flex justify-between items-center mb-2">
         <div>
-          <p className="text-[0.6rem] text-stone-400 font-mono font-bold uppercase tracking-wider">COOL NATIVE APP</p>
+          <p className="text-[0.6rem] text-stone-400 font-mono font-bold uppercase tracking-wider">Nusaena NATIVE APP</p>
           <p className="text-stone-900 font-semibold text-base mt-0.5">Halo, {fullName}</p>
           <p className="text-xs text-stone-400 mt-0.5">Role: {userRole}</p>
         </div>
@@ -229,7 +229,7 @@ export default function MenuPage() {
       </div>
 
       <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold mt-auto pt-10">
-        COOL SYSTEM V3
+        NUSAENA V1
       </footer>
     </div>
   );

@@ -8,19 +8,20 @@ import OperatorShell from "@/components/mobile/OperatorShell";
 
 export default function PutawayPage() {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputBarcodeRef = useRef<HTMLInputElement>(null);
+  const inputLocationRef = useRef<HTMLInputElement>(null); // 🔥 Tambah ref untuk lokasi rak
   const [loading, setLoading] = useState(false);
   const [barcode, setBarcode] = useState("");
   const [locationCode, setLocationCode] = useState("");
   const [statusMsg, setStatusMsg] = useState({ text: "", type: "" });
   const [sessionInfo, setSessionInfo] = useState<{ code: string; is_new: boolean } | null>(null);
 
-  // Auto focus ke barcode
+  // Auto focus ke barcode saat halaman pertama terbuka
   useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 200);
+    setTimeout(() => inputBarcodeRef.current?.focus(), 200);
   }, []);
 
-  // Handle scan
+  // Handle proses simpan ke database
   const handleScan = async () => {
     const cleanBarcode = barcode.trim();
     const cleanLocation = locationCode.trim();
@@ -28,12 +29,14 @@ export default function PutawayPage() {
     if (!cleanBarcode) {
       showToast.error("Scan barcode terlebih dahulu");
       setStatusMsg({ text: "⚠️ Scan barcode paket", type: "error" });
+      inputBarcodeRef.current?.focus();
       return;
     }
 
     if (!cleanLocation) {
       showToast.error("Scan lokasi terlebih dahulu");
       setStatusMsg({ text: "⚠️ Scan lokasi rak", type: "error" });
+      inputLocationRef.current?.focus();
       return;
     }
 
@@ -66,13 +69,13 @@ export default function PutawayPage() {
           type: "success" 
         });
 
-        // 🔥 Auto reset setelah 500ms
+        // 🔥 Auto reset dan kembalikan fokus ke scan resi pertama
         setTimeout(() => {
           setBarcode("");
           setLocationCode("");
           setSessionInfo(null);
           setStatusMsg({ text: "", type: "" });
-          inputRef.current?.focus();
+          inputBarcodeRef.current?.focus(); // 🔥 Siap terima paket berikutnya
         }, 800);
       } else {
         playRejectedSound();
@@ -81,13 +84,38 @@ export default function PutawayPage() {
           text: `❌ ${result.message || "Gagal"}`, 
           type: "error" 
         });
+        inputBarcodeRef.current?.focus();
       }
     } catch (error) {
       playRejectedSound();
       showToast.error("Error connecting to server");
       setStatusMsg({ text: "❌ Error server", type: "error" });
+      inputBarcodeRef.current?.focus();
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 🔥 Logika penanganan tombol Enter pada input Resi / AWB
+  const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (barcode.trim()) {
+        // Jika resi sudah ada isinya, pindahkan laser langsung ke input lokasi rak
+        inputLocationRef.current?.focus();
+      } else {
+        showToast.error("Scan barcode terlebih dahulu");
+      }
+    }
+  };
+
+  // 🔥 Logika penanganan tombol Enter pada input Lokasi Rak (Auto Save)
+  const handleLocationKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (!loading) {
+        handleScan(); // Langsung eksekusi simpan ke DB
+      }
     }
   };
 
@@ -113,7 +141,7 @@ export default function PutawayPage() {
           </button>
         </div>
 
-        {/* Session Info (jika ada) */}
+        {/* Session Info */}
         {sessionInfo && (
           <div className={`p-3 rounded-xl border-2 text-sm ${
             sessionInfo.is_new 
@@ -146,14 +174,14 @@ export default function PutawayPage() {
               1. Scan Resi / AWB
             </label>
             <input
-              ref={inputRef}
+              ref={inputBarcodeRef}
               type="text"
               autoFocus
               disabled={loading}
               placeholder="Scan barcode..."
               value={barcode}
               onChange={(e) => setBarcode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !loading && handleScan()}
+              onKeyDown={handleBarcodeKeyDown} // 🔥 Pindah ke lokasi rak
               className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 font-mono text-lg font-semibold focus:outline-none focus:border-blue-500 disabled:opacity-50"
             />
           </div>
@@ -163,12 +191,13 @@ export default function PutawayPage() {
               2. Scan Lokasi Rak
             </label>
             <input
+              ref={inputLocationRef} // 🔥 Menggunakan ref lokasi
               type="text"
               disabled={loading}
               placeholder="Contoh: A-01-03"
               value={locationCode}
               onChange={(e) => setLocationCode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !loading && handleScan()}
+              onKeyDown={handleLocationKeyDown} // 🔥 Jalankan auto-save
               className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 font-mono text-lg font-semibold focus:outline-none focus:border-blue-500 disabled:opacity-50 uppercase"
             />
           </div>
@@ -182,12 +211,10 @@ export default function PutawayPage() {
           </button>
         </div>
 
-        {/* Info */}
+        {/* Info PWA */}
         <div className="bg-stone-50 p-3 rounded-xl border border-stone-200">
           <p className="text-[10px] text-stone-400 text-center">
-            💡 Scan barcode paket, lalu scan lokasi rak.
-            <br />
-            Session akan otomatis dibuat jika belum ada.
+            💡 Alur Otomatis: Tembak resi $\rightarrow$ Laser otomatis pindah $\rightarrow$ Tembak rak $\rightarrow$ Otomatis tersimpan!
           </p>
         </div>
 

@@ -6,7 +6,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "COOL System V3 - ERP Warehouse",
+  title: "Nusaena.wms",
   description: "Sorting & Handover Management System",
 };
 
