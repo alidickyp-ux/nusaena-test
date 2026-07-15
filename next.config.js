@@ -8,11 +8,18 @@ const withPWA = require('next-pwa')({
     document: '/_offline',
   },
   runtimeCaching: [
-    // 🔥 WAJIB PALING ATAS: semua request ke /api/* JANGAN pernah di-cache.
+    // 🔥 FIX UTAMA PWA CACHE: Menggunakan regex yang mencakup root URL internal server Anda
     {
-      urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
-      handler: 'NetworkOnly',
-      options: {},
+      urlPattern: /\/api\/.*$/,
+      handler: 'NetworkOnly', // Mutlak tembak ke server, dilarang simpan/baca cache HP
+      options: {
+        backgroundSync: {
+          name: 'api-sync',
+          options: {
+            maxRetentionTime: 24 * 60,
+          },
+        },
+      },
     },
     // Asset gambar/icon — aman di-cache lama untuk offline
     {
@@ -59,7 +66,6 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: false,
   },
-  // 🔥 TAMBAHKAN: Pastikan env tersedia saat build
   env: {
     DATABASE_URL: process.env.DATABASE_URL || '',
   },
