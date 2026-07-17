@@ -80,14 +80,12 @@ const navItems: NavItem[] = [
     category: 'INSTANT' 
   },
   
-  // B2B Menu (Coming Soon)
+  // B2B Menu
   { 
-    name: 'B2B Management', 
-    href: '#', 
+    name: 'Manifest B2B', 
+    href: '/admin/b2b/manifest', 
     icon: <Building2 className="w-4 h-4" />, 
-    category: 'B2B', 
-    disabled: true,
-    badge: 'Soon'
+    category: 'B2B'
   },
   
   // Admin Menu

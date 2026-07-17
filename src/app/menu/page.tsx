@@ -76,22 +76,16 @@ export default function MenuPage() {
         {/* B2B - Coming Soon */}
         <button
           onClick={() => router.push("/b2b")}
-          className="bg-white border-2 border-stone-200 rounded-2xl p-6 text-left hover:border-stone-400 active:scale-[0.98] transition-all shadow-sm hover:shadow-md opacity-50 cursor-not-allowed"
-          disabled
+          className="bg-white border-2 border-blue-200 rounded-2xl p-6 text-left hover:border-blue-500 active:scale-[0.98] transition-all shadow-sm hover:shadow-md"
         >
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0">
-              <svg className="w-7 h-7 text-stone-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="w-14 h-14 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <svg className="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
             </div>
             <div>
-              <div className="text-stone-900 font-extrabold text-lg flex items-center gap-2">
-                🏢 B2B
-                <span className="text-[10px] bg-stone-200 text-stone-500 px-2 py-0.5 rounded-full font-normal">
-                  Soon
-                </span>
-              </div>
+              <div className="text-stone-900 font-extrabold text-lg">🏢 B2B</div>
               <div className="text-stone-500 text-xs mt-0.5">Putaway &amp; Loading gudang</div>
             </div>
           </div>
