@@ -14,6 +14,10 @@ interface BoxData {
   weight: string;
   site: string;
   staging_location: string;
+  store_name: string;
+  address: string;
+  city: string;
+  province: string;
   loading_status: string;
   putaway_at: string;
   putaway_by_name: string;
@@ -49,6 +53,10 @@ export default function B2BPutawayPage() {
   // Status
   const [statusMsg, setStatusMsg] = useState({ text: "", type: "" });
   const [step, setStep] = useState<"reference" | "box">("reference");
+  
+  // 🔥 State untuk edit
+  const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Partial<BoxData>>({});
 
   // Fetch user
   useEffect(() => {
@@ -120,6 +128,7 @@ export default function B2BPutawayPage() {
         playRejectedSound();
       }
     } catch (error) {
+      console.error("Error scanning reference:", error);
       showToast.error("Error scanning reference");
       playRejectedSound();
     } finally {
@@ -159,7 +168,7 @@ export default function B2BPutawayPage() {
         playAcceptedSound();
         showToast.success(result.message);
         
-        // Add to list
+        // Add to list with full data
         setBoxes(prev => [...prev, result.data]);
         setTotalBox(result.total_box);
         setBoxId("");
@@ -176,10 +185,69 @@ export default function B2BPutawayPage() {
         showToast.error(result.message || "Gagal scan box");
       }
     } catch (error) {
+      console.error("Error scanning box:", error);
       showToast.error("Error scanning box");
       playRejectedSound();
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 🔥 Start edit box
+  const startEdit = (box: BoxData) => {
+    setEditingBoxId(box.id);
+    setEditForm({
+      store_name: box.store_name || "",
+      address: box.address || "",
+      city: box.city || "",
+      province: box.province || "",
+      site: box.site || "",
+      staging_location: box.staging_location || "",
+      weight: box.weight || "",
+    });
+  };
+
+  // 🔥 Cancel edit
+  const cancelEdit = () => {
+    setEditingBoxId(null);
+    setEditForm({});
+  };
+
+  // 🔥 Save edit box
+  const saveEdit = async (boxId: string) => {
+    try {
+      const res = await fetch(`/api/b2b/putaway/box/${boxId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success) {
+          showToast.success("✅ Data box berhasil diupdate");
+          setEditingBoxId(null);
+          setEditForm({});
+          
+          // Refresh box list
+          const refreshRes = await fetch(`/api/b2b/putaway/list/${encodeURIComponent(reference)}`, {
+            cache: "no-store",
+          });
+          if (refreshRes.ok) {
+            const data = await refreshRes.json();
+            setBoxes(data.data.boxes || []);
+            setTotalBox(data.data.total_box || 0);
+          }
+        } else {
+          showToast.error(result.message || "Gagal update box");
+        }
+      } else {
+        const error = await res.json();
+        showToast.error(error.message || "Gagal update box");
+      }
+    } catch (error) {
+      console.error("Error saving edit:", error);
+      showToast.error("Error updating box");
     }
   };
 
@@ -204,6 +272,7 @@ export default function B2BPutawayPage() {
     setTotalBox(0);
     setStatusMsg({ text: "", type: "" });
     setLoading(false);
+    setEditingBoxId(null);
     setTimeout(() => inputRef.current?.focus(), 200);
   };
 
@@ -229,7 +298,6 @@ export default function B2BPutawayPage() {
             </button>
           </div>
 
-          {/* Status */}
           {statusMsg.text && (
             <div className={`p-3 rounded-xl border-2 text-sm font-bold ${
               statusMsg.type === "success" 
@@ -242,7 +310,6 @@ export default function B2BPutawayPage() {
             </div>
           )}
 
-          {/* Scanner */}
           <div className="bg-white p-4 rounded-2xl border border-stone-200 space-y-3">
             <label className="block text-stone-500 font-bold uppercase text-xs tracking-widest">
               Scan Reference / PO
@@ -267,7 +334,6 @@ export default function B2BPutawayPage() {
             </button>
           </div>
 
-          {/* Info */}
           <div className="bg-stone-50 p-3 rounded-xl border border-stone-200">
             <p className="text-[10px] text-stone-400 text-center">
               💡 Scan reference / PO untuk memulai putaway.
@@ -319,7 +385,6 @@ export default function B2BPutawayPage() {
           </div>
         </div>
 
-        {/* Status */}
         {statusMsg.text && (
           <div className={`p-3 rounded-xl border-2 text-sm font-bold ${
             statusMsg.type === "success" 
@@ -398,42 +463,162 @@ export default function B2BPutawayPage() {
           </button>
         </div>
 
-        {/* Box List */}
+        {/* 🔥 Box List with Edit */}
         <div className="space-y-2">
           <div className="flex justify-between items-center px-1">
             <p className="text-stone-500 text-xs uppercase font-bold tracking-widest">
               📋 Box List ({boxes.length})
             </p>
           </div>
-          <div className="max-h-60 overflow-y-auto space-y-1.5">
+          <div className="max-h-80 overflow-y-auto space-y-1.5">
             {boxes.length === 0 ? (
               <div className="p-4 bg-white border-2 border-dashed border-stone-300 rounded-xl text-center text-stone-400 text-sm">
                 Belum ada box discan
               </div>
             ) : (
-              boxes.map((box) => (
-                <div
-                  key={box.id}
-                  className="bg-white p-3 rounded-xl border border-stone-200 flex items-center justify-between"
-                >
-                  <div>
-                    <p className="font-mono text-sm font-bold text-stone-800">
-                      {box.box_number}
-                    </p>
-                    <p className="text-xs text-stone-500">
-                      {box.weight ? `${box.weight}kg` : '-'} · {box.site}
-                    </p>
+              boxes.map((box) => {
+                const isEditing = editingBoxId === box.id;
+                
+                return (
+                  <div
+                    key={box.id}
+                    className="bg-white p-3 rounded-xl border border-stone-200"
+                  >
+                    {isEditing ? (
+                      // 🔥 Edit Mode
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-bold text-sm text-stone-800 truncate">
+                            {box.box_id}
+                          </span>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={cancelEdit}
+                              className="p-1 text-stone-400 hover:bg-stone-100 rounded-lg"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => saveEdit(box.id)}
+                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <div>
+                            <label className="text-[9px] text-stone-400 font-bold uppercase">Store</label>
+                            <input
+                              type="text"
+                              value={editForm.store_name || ""}
+                              onChange={(e) => setEditForm({ ...editForm, store_name: e.target.value })}
+                              className="w-full px-2 py-1 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-stone-400 font-bold uppercase">Weight (kg)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editForm.weight || ""}
+                              onChange={(e) => setEditForm({ ...editForm, weight: e.target.value })}
+                              className="w-full px-2 py-1 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="text-[9px] text-stone-400 font-bold uppercase">Address</label>
+                            <input
+                              type="text"
+                              value={editForm.address || ""}
+                              onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                              className="w-full px-2 py-1 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-stone-400 font-bold uppercase">City</label>
+                            <input
+                              type="text"
+                              value={editForm.city || ""}
+                              onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                              className="w-full px-2 py-1 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-stone-400 font-bold uppercase">Province</label>
+                            <input
+                              type="text"
+                              value={editForm.province || ""}
+                              onChange={(e) => setEditForm({ ...editForm, province: e.target.value })}
+                              className="w-full px-2 py-1 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-stone-400 font-bold uppercase">Site</label>
+                            <input
+                              type="text"
+                              value={editForm.site || ""}
+                              onChange={(e) => setEditForm({ ...editForm, site: e.target.value })}
+                              className="w-full px-2 py-1 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-stone-400 font-bold uppercase">Staging</label>
+                            <input
+                              type="text"
+                              value={editForm.staging_location || ""}
+                              onChange={(e) => setEditForm({ ...editForm, staging_location: e.target.value })}
+                              className="w-full px-2 py-1 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      // 🔥 View Mode
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <p className="font-mono text-sm font-bold text-stone-800">
+                              {box.box_number}
+                            </p>
+                            <p className="text-xs text-stone-500">
+                              {box.weight ? `${box.weight}kg` : '-'} · {box.site}
+                              {box.staging_location && ` · ${box.staging_location}`}
+                            </p>
+                            {/* 🔥 Tampilkan alamat */}
+                            {(box.store_name || box.address || box.city || box.province) && (
+                              <div className="mt-1 text-[10px] text-stone-400">
+                                {box.store_name && <span>{box.store_name}</span>}
+                                {box.address && <span> · {box.address}</span>}
+                                {box.city && <span> · {box.city}</span>}
+                                {box.province && <span> · {box.province}</span>}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => startEdit(box)}
+                              className="p-1.5 text-stone-400 hover:bg-stone-100 rounded-lg"
+                              title="Edit alamat"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                              ✅
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-                      ✅ Saved
-                    </span>
-                    <p className="text-[10px] text-stone-400 mt-0.5">
-                      {new Date(box.putaway_at).toLocaleTimeString('id-ID')}
-                    </p>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

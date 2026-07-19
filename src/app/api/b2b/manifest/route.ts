@@ -1,3 +1,5 @@
+// app/api/b2b/manifest/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
@@ -16,6 +18,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, message: 'Invalid session' }, { status: 401 });
     }
 
+    // 🔥 Hanya ambil kolom yang masih ada di manifest_order
     const manifests = await sql`
       SELECT 
         id,
@@ -23,13 +26,7 @@ export async function GET(request: NextRequest) {
         vendor_name,
         total_box,
         total_weight,
-        delivered_status,
         loading_date,
-        arrive_date,
-        resi_number,
-        reference_price,
-        cost,
-        ppn,
         created_at,
         updated_at
       FROM manifest_order

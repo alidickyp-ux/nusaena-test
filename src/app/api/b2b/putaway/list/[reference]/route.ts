@@ -1,3 +1,5 @@
+// app/api/b2b/putaway/list/[reference]/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
@@ -21,31 +23,37 @@ export async function GET(
 
     const reference = decodeURIComponent(params.reference);
 
+    // 🔥 JOIN dengan master_store untuk ambil brand
     const boxes = await sql`
       SELECT 
-        id,
-        reference,
-        box_id,
-        box_number,
-        weight,
-        site,
-        staging_location,
-        store_name,
-        address,
-        city,
-        province,
-        loading_status,
-        putaway_at,
-        putaway_by,
-        (
-          SELECT full_name FROM users WHERE id = putaway_by
-        ) as putaway_by_name
-      FROM b2b_putaway
-      WHERE reference = ${reference}
-      ORDER BY created_at ASC
+        bp.id,
+        bp.reference,
+        bp.box_id,
+        bp.box_number,
+        bp.weight,
+        bp.site,
+        bp.staging_location,
+        bp.store_name,
+        bp.address,
+        bp.city,
+        bp.province,
+        bp.loading_status,
+        bp.driver,
+        bp.operator,
+        bp.security,
+        bp.police_number,
+        bp.driver_sign,
+        bp.security_sign,
+        bp.putaway_at,
+        bp.loading_at,
+        bp.delivery_number,
+        ms."Brand" as brand
+      FROM b2b_putaway bp
+      LEFT JOIN master_store ms ON ms.site = bp.site
+      WHERE bp.reference = ${reference}
+      ORDER BY bp.created_at ASC
     `;
 
-    // Hitung total
     const total = await sql`
       SELECT 
         COUNT(*) as total_box,
@@ -58,7 +66,7 @@ export async function GET(
       success: true,
       data: {
         reference,
-        boxes: boxes,
+        boxes: boxes || [],
         total_box: Number(total[0]?.total_box || 0),
         total_weight: Number(total[0]?.total_weight || 0),
       },

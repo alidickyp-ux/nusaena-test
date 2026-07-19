@@ -48,11 +48,11 @@ export async function GET(
         mo.vendor_name,
         mo.delivery_number as manifest_delivery_number,
         mr.resi_number,
-        mr.cost,
-        mr.ppn
+        mr.delivered_status,
+        mr.arrive_date
       FROM b2b_putaway bp
       INNER JOIN manifest_order mo ON mo.delivery_number = bp.delivery_number
-      LEFT JOIN manifest_references mr ON mr.manifest_id = mo.id AND mr.reference = bp.reference
+      LEFT JOIN manifest_reference mr ON mr.manifest_id = mo.id AND mr.reference = bp.reference
       WHERE mo.id = ${manifestId}::UUID
       ORDER BY bp.reference ASC, bp.created_at ASC
     `;

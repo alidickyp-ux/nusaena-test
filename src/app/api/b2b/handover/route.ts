@@ -96,25 +96,39 @@ export async function POST(request: NextRequest) {
         AND delivery_number = ${deliveryNumber}
     `;
 
-    // 🔥 Insert ke manifest_order
+    // 🔥 Insert ke manifest_order (delivered_status TIDAK ADA di sini lagi —
+    // sudah pindah ke manifest_reference, per-reference)
     const manifest = await sql`
       INSERT INTO manifest_order (
         delivery_number,
         vendor_name,
         total_box,
         total_weight,
-        delivered_status,
         loading_date
       ) VALUES (
         ${deliveryNumber},
         ${vendor_name},
         ${stats[0]?.total_box || 0},
         ${stats[0]?.total_weight || 0},
-        'on_the_way',
         NOW()
       )
-      RETURNING id, delivery_number, vendor_name, total_box, total_weight, delivered_status
+      RETURNING id, delivery_number, vendor_name, total_box, total_weight
     `;
+
+    // 🔥 Buat satu baris manifest_reference untuk TIAP reference dalam DN ini —
+    // tanpa ini, tab "References" di admin selalu kosong untuk DN baru,
+    // dan resi/arrive_date per-reference tidak ada tempat disimpan.
+    const manifestId = manifest[0].id;
+    for (const ref of references) {
+      await sql`
+        INSERT INTO manifest_reference (
+          manifest_id, reference, delivered_status
+        ) VALUES (
+          ${manifestId}::UUID, ${ref}, 'on_shipping'
+        )
+        ON CONFLICT (manifest_id, reference) DO NOTHING
+      `;
+    }
 
     return NextResponse.json({
       success: true,

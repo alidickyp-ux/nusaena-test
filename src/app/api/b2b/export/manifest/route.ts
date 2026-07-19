@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, message: 'Invalid session' }, { status: 401 });
     }
 
-    // 🔥 Ambil semua data manifest_order
+    // 🔥 Ambil semua data manifest_order (header DN saja — status/resi/cost/ppn
+    // sekarang per-reference, ada di manifest_reference)
     const manifests = await sql`
       SELECT 
         id,
@@ -24,12 +25,7 @@ export async function GET(request: NextRequest) {
         vendor_name,
         total_box,
         total_weight,
-        delivered_status,
         loading_date,
-        arrive_date,
-        reference_price,
-        cost,
-        ppn,
         created_at,
         updated_at
       FROM manifest_order
