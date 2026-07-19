@@ -7,30 +7,6 @@ const withPWA = require('next-pwa')({
   fallbacks: {
     document: '/_offline',
   },
-  // 🔥 TAMBAHKAN BAGIAN INI (tidak mengubah yang lain)
-  manifest: {
-    name: 'Nusaena',
-    short_name: 'Nusaena',
-    description: 'Handover Management System',
-    start_url: '/',
-    display: 'standalone',
-    background_color: '#ffffff',
-    theme_color: '#1976d2',
-    // 🔥 INI KUNCINYA - biarkan default atau hapus
-    orientation: 'default',
-    icons: [
-      {
-        src: '/icons/icon-192.png',
-        sizes: '192x192',
-        type: 'image/png',
-      },
-      {
-        src: '/icons/icon-512.png',
-        sizes: '512x512',
-        type: 'image/png',
-      },
-    ],
-  },
   runtimeCaching: [
     // 🔥 FIX UTAMA PWA CACHE: Menggunakan regex yang mencakup root URL internal server Anda
     {
