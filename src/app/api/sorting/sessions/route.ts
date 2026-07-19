@@ -23,6 +23,13 @@ export async function GET(request: NextRequest) {
     }
 
     // 🔥 Query dengan waktu sekarang untuk bypass cache
+    // 🔥 Kecualikan sesi 'INS-*' (instant/same-day putaway) — sesi itu
+    // dikelola otomatis lewat putaway_instant_package() (tanpa session_id
+    // sama sekali, tidak pernah lewat alur scan manual), dan memang tidak
+    // pernah ditutup dari sisi manapun. Kalau ikut tampil di sini, dia
+    // numpuk terus setiap hari di "Sesi Running" halaman Sorting manual,
+    // padahal operator tidak pernah perlu (dan tidak seharusnya) scan
+    // manual ke sesi itu.
     const sessions = await sql`
       SELECT 
         ss.id,
@@ -38,6 +45,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN users u ON u.id = ss.operator_id
       LEFT JOIN sorting_details sd ON sd.session_id = ss.id
       WHERE ss.status = 'RUNNING'
+        AND ss.session_code NOT LIKE 'INS-%'
       GROUP BY 
         ss.id, 
         ss.session_code, 
@@ -52,7 +60,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       sessions: sessions,
-      _timestamp: Date.now(), // Bypass cache
+      _timestamp: Date.now(),
     }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
