@@ -81,7 +81,7 @@ const navItems: NavItem[] = [
   },
 
   // ============ TOOLS OPERATION ============
-  { 
+   { 
     name: 'Putaway', 
     href: '/putaway', 
     icon: <Box className="w-4 h-4" />, 
@@ -95,13 +95,13 @@ const navItems: NavItem[] = [
   },
   { 
     name: 'Sorting', 
-    href: '/admin/sorting', 
+    href: '/sorting',  // ✅ Perbaiki: dari /admin/sorting menjadi /sorting
     icon: <Package className="w-4 h-4" />, 
     category: 'TOOLS' 
   },
   { 
     name: 'Handover', 
-    href: '/admin/manifest', 
+    href: '/handover',  // ✅ Perbaiki: dari /admin/manifest menjadi /handover
     icon: <FileText className="w-4 h-4" />, 
     category: 'TOOLS' 
   },
