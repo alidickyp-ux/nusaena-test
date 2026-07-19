@@ -4,6 +4,15 @@ import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// 🔥 FIX PAGINASI: sebelumnya sorting_details dan instant_packages
+// masing-masing di-fetch dengan LIMIT/OFFSET SENDIRI-SENDIRI, lalu
+// digabung dan di-slice lagi pakai offset yang sama. Itu salah secara
+// matematis — begitu pindah halaman, OFFSET diterapkan ke DUA sumber
+// terpisah, bukan ke hasil gabungan yang sudah terurut, jadi baris yang
+// seharusnya tampil di halaman berikutnya malah "hilang" di dua-duanya.
+//
+// Sekarang digabung jadi SATU query pakai UNION ALL, lalu ORDER BY +
+// LIMIT/OFFSET diterapkan SEKALI di database terhadap hasil gabungan.
 export async function GET(request: NextRequest) {
   try {
     const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -23,68 +32,35 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || '';
     const sessionStatus = searchParams.get('session_status'); // 'running' | 'closed' | null
 
-    // ============================================================
-    // 1. QUERY UNTUK SORTING_DETAILS (B2C Regular)
-    // ============================================================
-    let sortingRows: any[] = [];
-    let sortingTotal = 0;
+    // instant_packages tidak punya konsep CLOSED (selalu dianggap RUNNING),
+    // jadi kalau filter = 'closed', instant dikecualikan total dari hasil.
+    const includeInstant = sessionStatus !== 'closed';
+
+    let rows: any[] = [];
+    let total = 0;
 
     if (search) {
       const p = `%${search}%`;
-      if (sessionStatus === 'running') {
-        sortingRows = await sql`
-          SELECT 
-            sd.id, 
-            sd.barcode_resi, 
-            sd.scanned_at, 
-            sd.is_validated_handover,
-            sd.discrepancy_reason, 
-            sd.validated_at,
-            ss.session_code, 
-            ss.status as session_status,
-            COALESCE(mt.transporter_name, '-') as transporter_name,
-            'sorting' as source_type,
-            NULL as instant_status
-          FROM sorting_details sd
-          JOIN sorting_sessions ss ON ss.id = sd.session_id
-          LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
-          WHERE ss.status = 'RUNNING'
-            AND (sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p})
-          ORDER BY sd.scanned_at DESC
+
+      if (sessionStatus === 'closed') {
+        rows = await sql`
+          SELECT * FROM (
+            SELECT 
+              sd.id::text as id, sd.barcode_resi, sd.scanned_at, sd.is_validated_handover,
+              sd.discrepancy_reason, sd.validated_at,
+              ss.session_code, ss.status as session_status,
+              COALESCE(mt.transporter_name, '-') as transporter_name,
+              'sorting' as source_type, NULL::text as instant_status
+            FROM sorting_details sd
+            JOIN sorting_sessions ss ON ss.id = sd.session_id
+            LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+            WHERE ss.status = 'CLOSED'
+              AND (sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p})
+          ) combined
+          ORDER BY scanned_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
-        const totalResult = await sql`
-          SELECT COUNT(*) as total
-          FROM sorting_details sd
-          JOIN sorting_sessions ss ON ss.id = sd.session_id
-          LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
-          WHERE ss.status = 'RUNNING'
-            AND (sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p})
-        `;
-        sortingTotal = parseInt(totalResult[0]?.total || '0');
-      } else if (sessionStatus === 'closed') {
-        sortingRows = await sql`
-          SELECT 
-            sd.id, 
-            sd.barcode_resi, 
-            sd.scanned_at, 
-            sd.is_validated_handover,
-            sd.discrepancy_reason, 
-            sd.validated_at,
-            ss.session_code, 
-            ss.status as session_status,
-            COALESCE(mt.transporter_name, '-') as transporter_name,
-            'sorting' as source_type,
-            NULL as instant_status
-          FROM sorting_details sd
-          JOIN sorting_sessions ss ON ss.id = sd.session_id
-          LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
-          WHERE ss.status = 'CLOSED'
-            AND (sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p})
-          ORDER BY sd.scanned_at DESC
-          LIMIT ${limit} OFFSET ${offset}
-        `;
-        const totalResult = await sql`
+        const t = await sql`
           SELECT COUNT(*) as total
           FROM sorting_details sd
           JOIN sorting_sessions ss ON ss.id = sd.session_id
@@ -92,215 +68,203 @@ export async function GET(request: NextRequest) {
           WHERE ss.status = 'CLOSED'
             AND (sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p})
         `;
-        sortingTotal = parseInt(totalResult[0]?.total || '0');
+        total = parseInt(t[0]?.total || '0');
+      } else if (sessionStatus === 'running') {
+        rows = await sql`
+          SELECT * FROM (
+            SELECT 
+              sd.id::text as id, sd.barcode_resi, sd.scanned_at, sd.is_validated_handover,
+              sd.discrepancy_reason, sd.validated_at,
+              ss.session_code, ss.status as session_status,
+              COALESCE(mt.transporter_name, '-') as transporter_name,
+              'sorting' as source_type, NULL::text as instant_status
+            FROM sorting_details sd
+            JOIN sorting_sessions ss ON ss.id = sd.session_id
+            LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+            WHERE ss.status = 'RUNNING'
+              AND (sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p})
+
+            UNION ALL
+
+            SELECT
+              ip.id::text as id, ip.barcode_resi, ip.putaway_at as scanned_at,
+              (ip.status = 'PICKED') as is_validated_handover,
+              NULL::text as discrepancy_reason, ip.picked_at as validated_at,
+              TO_CHAR(ip.putaway_at, '"INST-"YYYY-MM-DD') as session_code,
+              'RUNNING' as session_status, 'INSTANT' as transporter_name,
+              'instant' as source_type, ip.status as instant_status
+            FROM instant_packages ip
+            WHERE ip.status IN ('STORED', 'PICKED')
+              AND ip.barcode_resi ILIKE ${p}
+          ) combined
+          ORDER BY scanned_at DESC
+          LIMIT ${limit} OFFSET ${offset}
+        `;
+        const t = await sql`
+          SELECT
+            (SELECT COUNT(*) FROM sorting_details sd
+              JOIN sorting_sessions ss ON ss.id = sd.session_id
+              LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+              WHERE ss.status = 'RUNNING'
+                AND (sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p}))
+            +
+            (SELECT COUNT(*) FROM instant_packages ip
+              WHERE ip.status IN ('STORED', 'PICKED') AND ip.barcode_resi ILIKE ${p})
+          as total
+        `;
+        total = parseInt(t[0]?.total || '0');
       } else {
-        sortingRows = await sql`
-          SELECT 
-            sd.id, 
-            sd.barcode_resi, 
-            sd.scanned_at, 
-            sd.is_validated_handover,
-            sd.discrepancy_reason, 
-            sd.validated_at,
-            ss.session_code, 
-            ss.status as session_status,
-            COALESCE(mt.transporter_name, '-') as transporter_name,
-            'sorting' as source_type,
-            NULL as instant_status
-          FROM sorting_details sd
-          JOIN sorting_sessions ss ON ss.id = sd.session_id
-          LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
-          WHERE sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p}
-          ORDER BY sd.scanned_at DESC
+        rows = await sql`
+          SELECT * FROM (
+            SELECT 
+              sd.id::text as id, sd.barcode_resi, sd.scanned_at, sd.is_validated_handover,
+              sd.discrepancy_reason, sd.validated_at,
+              ss.session_code, ss.status as session_status,
+              COALESCE(mt.transporter_name, '-') as transporter_name,
+              'sorting' as source_type, NULL::text as instant_status
+            FROM sorting_details sd
+            JOIN sorting_sessions ss ON ss.id = sd.session_id
+            LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+            WHERE sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p}
+
+            UNION ALL
+
+            SELECT
+              ip.id::text as id, ip.barcode_resi, ip.putaway_at as scanned_at,
+              (ip.status = 'PICKED') as is_validated_handover,
+              NULL::text as discrepancy_reason, ip.picked_at as validated_at,
+              TO_CHAR(ip.putaway_at, '"INST-"YYYY-MM-DD') as session_code,
+              'RUNNING' as session_status, 'INSTANT' as transporter_name,
+              'instant' as source_type, ip.status as instant_status
+            FROM instant_packages ip
+            WHERE ip.status IN ('STORED', 'PICKED')
+              AND ip.barcode_resi ILIKE ${p}
+          ) combined
+          ORDER BY scanned_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
-        const totalResult = await sql`
-          SELECT COUNT(*) as total
-          FROM sorting_details sd
-          JOIN sorting_sessions ss ON ss.id = sd.session_id
-          LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
-          WHERE sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p}
+        const t = await sql`
+          SELECT
+            (SELECT COUNT(*) FROM sorting_details sd
+              JOIN sorting_sessions ss ON ss.id = sd.session_id
+              LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+              WHERE sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p})
+            +
+            (SELECT COUNT(*) FROM instant_packages ip
+              WHERE ip.status IN ('STORED', 'PICKED') AND ip.barcode_resi ILIKE ${p})
+          as total
         `;
-        sortingTotal = parseInt(totalResult[0]?.total || '0');
+        total = parseInt(t[0]?.total || '0');
       }
     } else {
-      if (sessionStatus === 'running') {
-        sortingRows = await sql`
-          SELECT 
-            sd.id, 
-            sd.barcode_resi, 
-            sd.scanned_at, 
-            sd.is_validated_handover,
-            sd.discrepancy_reason, 
-            sd.validated_at,
-            ss.session_code, 
-            ss.status as session_status,
-            COALESCE(mt.transporter_name, '-') as transporter_name,
-            'sorting' as source_type,
-            NULL as instant_status
-          FROM sorting_details sd
-          JOIN sorting_sessions ss ON ss.id = sd.session_id
-          LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
-          WHERE ss.status = 'RUNNING'
-          ORDER BY sd.scanned_at DESC
+      if (sessionStatus === 'closed') {
+        rows = await sql`
+          SELECT * FROM (
+            SELECT 
+              sd.id::text as id, sd.barcode_resi, sd.scanned_at, sd.is_validated_handover,
+              sd.discrepancy_reason, sd.validated_at,
+              ss.session_code, ss.status as session_status,
+              COALESCE(mt.transporter_name, '-') as transporter_name,
+              'sorting' as source_type, NULL::text as instant_status
+            FROM sorting_details sd
+            JOIN sorting_sessions ss ON ss.id = sd.session_id
+            LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+            WHERE ss.status = 'CLOSED'
+          ) combined
+          ORDER BY scanned_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
-        const totalResult = await sql`
-          SELECT COUNT(*) as total
-          FROM sorting_details sd
-          JOIN sorting_sessions ss ON ss.id = sd.session_id
-          WHERE ss.status = 'RUNNING'
-        `;
-        sortingTotal = parseInt(totalResult[0]?.total || '0');
-      } else if (sessionStatus === 'closed') {
-        sortingRows = await sql`
-          SELECT 
-            sd.id, 
-            sd.barcode_resi, 
-            sd.scanned_at, 
-            sd.is_validated_handover,
-            sd.discrepancy_reason, 
-            sd.validated_at,
-            ss.session_code, 
-            ss.status as session_status,
-            COALESCE(mt.transporter_name, '-') as transporter_name,
-            'sorting' as source_type,
-            NULL as instant_status
-          FROM sorting_details sd
-          JOIN sorting_sessions ss ON ss.id = sd.session_id
-          LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
-          WHERE ss.status = 'CLOSED'
-          ORDER BY sd.scanned_at DESC
-          LIMIT ${limit} OFFSET ${offset}
-        `;
-        const totalResult = await sql`
+        const t = await sql`
           SELECT COUNT(*) as total
           FROM sorting_details sd
           JOIN sorting_sessions ss ON ss.id = sd.session_id
           WHERE ss.status = 'CLOSED'
         `;
-        sortingTotal = parseInt(totalResult[0]?.total || '0');
-      } else {
-        sortingRows = await sql`
-          SELECT 
-            sd.id, 
-            sd.barcode_resi, 
-            sd.scanned_at, 
-            sd.is_validated_handover,
-            sd.discrepancy_reason, 
-            sd.validated_at,
-            ss.session_code, 
-            ss.status as session_status,
-            COALESCE(mt.transporter_name, '-') as transporter_name,
-            'sorting' as source_type,
-            NULL as instant_status
-          FROM sorting_details sd
-          JOIN sorting_sessions ss ON ss.id = sd.session_id
-          LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
-          ORDER BY sd.scanned_at DESC
+        total = parseInt(t[0]?.total || '0');
+      } else if (sessionStatus === 'running') {
+        rows = await sql`
+          SELECT * FROM (
+            SELECT 
+              sd.id::text as id, sd.barcode_resi, sd.scanned_at, sd.is_validated_handover,
+              sd.discrepancy_reason, sd.validated_at,
+              ss.session_code, ss.status as session_status,
+              COALESCE(mt.transporter_name, '-') as transporter_name,
+              'sorting' as source_type, NULL::text as instant_status
+            FROM sorting_details sd
+            JOIN sorting_sessions ss ON ss.id = sd.session_id
+            LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+            WHERE ss.status = 'RUNNING'
+
+            UNION ALL
+
+            SELECT
+              ip.id::text as id, ip.barcode_resi, ip.putaway_at as scanned_at,
+              (ip.status = 'PICKED') as is_validated_handover,
+              NULL::text as discrepancy_reason, ip.picked_at as validated_at,
+              TO_CHAR(ip.putaway_at, '"INST-"YYYY-MM-DD') as session_code,
+              'RUNNING' as session_status, 'INSTANT' as transporter_name,
+              'instant' as source_type, ip.status as instant_status
+            FROM instant_packages ip
+            WHERE ip.status IN ('STORED', 'PICKED')
+          ) combined
+          ORDER BY scanned_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
-        const totalResult = await sql`
-          SELECT COUNT(*) as total
-          FROM sorting_details sd
-          JOIN sorting_sessions ss ON ss.id = sd.session_id
+        const t = await sql`
+          SELECT
+            (SELECT COUNT(*) FROM sorting_details sd
+              JOIN sorting_sessions ss ON ss.id = sd.session_id
+              WHERE ss.status = 'RUNNING')
+            +
+            (SELECT COUNT(*) FROM instant_packages ip WHERE ip.status IN ('STORED', 'PICKED'))
+          as total
         `;
-        sortingTotal = parseInt(totalResult[0]?.total || '0');
+        total = parseInt(t[0]?.total || '0');
+      } else {
+        rows = await sql`
+          SELECT * FROM (
+            SELECT 
+              sd.id::text as id, sd.barcode_resi, sd.scanned_at, sd.is_validated_handover,
+              sd.discrepancy_reason, sd.validated_at,
+              ss.session_code, ss.status as session_status,
+              COALESCE(mt.transporter_name, '-') as transporter_name,
+              'sorting' as source_type, NULL::text as instant_status
+            FROM sorting_details sd
+            JOIN sorting_sessions ss ON ss.id = sd.session_id
+            LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+
+            UNION ALL
+
+            SELECT
+              ip.id::text as id, ip.barcode_resi, ip.putaway_at as scanned_at,
+              (ip.status = 'PICKED') as is_validated_handover,
+              NULL::text as discrepancy_reason, ip.picked_at as validated_at,
+              TO_CHAR(ip.putaway_at, '"INST-"YYYY-MM-DD') as session_code,
+              'RUNNING' as session_status, 'INSTANT' as transporter_name,
+              'instant' as source_type, ip.status as instant_status
+            FROM instant_packages ip
+            WHERE ip.status IN ('STORED', 'PICKED')
+          ) combined
+          ORDER BY scanned_at DESC
+          LIMIT ${limit} OFFSET ${offset}
+        `;
+        const t = await sql`
+          SELECT
+            (SELECT COUNT(*) FROM sorting_details sd
+              JOIN sorting_sessions ss ON ss.id = sd.session_id)
+            +
+            (SELECT COUNT(*) FROM instant_packages ip WHERE ip.status IN ('STORED', 'PICKED'))
+          as total
+        `;
+        total = parseInt(t[0]?.total || '0');
       }
     }
 
-    // ============================================================
-    // 2. QUERY UNTUK INSTANT_PACKAGES (B2C Instant)
-    //    - Format session_code: INST-{tanggal}
-    // ============================================================
-    let instantRows: any[] = [];
-    let instantTotal = 0;
-
-    // Hanya query instant jika tidak filter session_status = 'closed'
-    if (sessionStatus !== 'closed') {
-      if (search) {
-        const p = `%${search}%`;
-        instantRows = await sql`
-          SELECT 
-            ip.id, 
-            ip.barcode_resi, 
-            ip.putaway_at as scanned_at,
-            CASE 
-              WHEN ip.status = 'PICKED' THEN true 
-              ELSE false 
-            END as is_validated_handover,
-            NULL as discrepancy_reason,
-            ip.picked_at as validated_at,
-            TO_CHAR(ip.putaway_at, '"INST-"YYYY-MM-DD') as session_code,
-            'RUNNING' as session_status,
-            'INSTANT' as transporter_name,
-            'instant' as source_type,
-            ip.status as instant_status
-          FROM instant_packages ip
-          WHERE ip.status IN ('STORED', 'PICKED')
-            AND ip.barcode_resi ILIKE ${p}
-          ORDER BY ip.putaway_at DESC
-          LIMIT ${limit} OFFSET ${offset}
-        `;
-        const totalResult = await sql`
-          SELECT COUNT(*) as total
-          FROM instant_packages ip
-          WHERE ip.status IN ('STORED', 'PICKED')
-            AND ip.barcode_resi ILIKE ${p}
-        `;
-        instantTotal = parseInt(totalResult[0]?.total || '0');
-      } else {
-        instantRows = await sql`
-          SELECT 
-            ip.id, 
-            ip.barcode_resi, 
-            ip.putaway_at as scanned_at,
-            CASE 
-              WHEN ip.status = 'PICKED' THEN true 
-              ELSE false 
-            END as is_validated_handover,
-            NULL as discrepancy_reason,
-            ip.picked_at as validated_at,
-            TO_CHAR(ip.putaway_at, '"INST-"YYYY-MM-DD') as session_code,
-            'RUNNING' as session_status,
-            'INSTANT' as transporter_name,
-            'instant' as source_type,
-            ip.status as instant_status
-          FROM instant_packages ip
-          WHERE ip.status IN ('STORED', 'PICKED')
-          ORDER BY ip.putaway_at DESC
-          LIMIT ${limit} OFFSET ${offset}
-        `;
-        const totalResult = await sql`
-          SELECT COUNT(*) as total
-          FROM instant_packages ip
-          WHERE ip.status IN ('STORED', 'PICKED')
-        `;
-        instantTotal = parseInt(totalResult[0]?.total || '0');
-      }
-    }
-
-    // ============================================================
-    // 3. GABUNGKAN DATA & URUTKAN
-    // ============================================================
-    const allRows = [...sortingRows, ...instantRows];
-    
-    // Urutkan berdasarkan scanned_at (terbaru di atas)
-    allRows.sort((a, b) => {
-      const dateA = new Date(a.scanned_at).getTime();
-      const dateB = new Date(b.scanned_at).getTime();
-      return dateB - dateA;
-    });
-
-    // Potong sesuai limit untuk pagination
-    const paginatedRows = allRows.slice(offset, offset + limit);
-    const total = sortingTotal + instantTotal;
     const totalPages = Math.ceil(total / limit);
 
-    // ============================================================
-    // 4. HITUNG STATISTIK
-    // ============================================================
-    // Sorting stats
+    // 🔥 Stats tetap GLOBAL (tidak ikut filter search/status) — sama seperti
+    // pola di tab History Logs, supaya angka di card konsisten mewakili
+    // keseluruhan data, bukan cuma hasil pencarian saat ini.
     const sortingStats = await sql`
       SELECT 
         COUNT(*) as total,
@@ -312,32 +276,29 @@ export async function GET(request: NextRequest) {
       JOIN sorting_sessions ss ON ss.id = sd.session_id
     `;
 
-    // Instant stats
     const instantStats = await sql`
       SELECT 
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'PICKED' THEN 1 END) as handed_over,
-        COUNT(CASE WHEN status = 'STORED' THEN 1 END) as pending,
-        0 as discrepancy,
-        COUNT(*) as in_running_session
+        COUNT(CASE WHEN status = 'STORED' THEN 1 END) as pending
       FROM instant_packages
       WHERE status IN ('STORED', 'PICKED')
     `;
 
     const sStats = sortingStats[0] || { total: 0, handed_over: 0, pending: 0, discrepancy: 0, in_running_session: 0 };
-    const iStats = instantStats[0] || { total: 0, handed_over: 0, pending: 0, discrepancy: 0, in_running_session: 0 };
+    const iStats = instantStats[0] || { total: 0, handed_over: 0, pending: 0 };
 
     const combinedStats = {
-      total: (sStats.total || 0) + (iStats.total || 0),
-      handed_over: (sStats.handed_over || 0) + (iStats.handed_over || 0),
-      pending: (sStats.pending || 0) + (iStats.pending || 0),
-      discrepancy: sStats.discrepancy || 0,
-      in_running_session: (sStats.in_running_session || 0) + (iStats.in_running_session || 0),
+      total: Number(sStats.total || 0) + Number(iStats.total || 0),
+      handed_over: Number(sStats.handed_over || 0) + Number(iStats.handed_over || 0),
+      pending: Number(sStats.pending || 0) + Number(iStats.pending || 0),
+      discrepancy: Number(sStats.discrepancy || 0),
+      in_running_session: Number(sStats.in_running_session || 0) + Number(iStats.total || 0),
     };
 
     return NextResponse.json({
       success: true,
-      data: paginatedRows || [],
+      data: rows || [],
       stats: combinedStats,
       pagination: {
         page,
