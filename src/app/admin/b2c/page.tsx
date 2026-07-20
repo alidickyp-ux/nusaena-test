@@ -545,7 +545,7 @@ function ManifestTab() {
 }
 
 // =========================================================
-// TAB: History Logs (existing, dipindah dari /admin/history)
+// TAB: History Logs
 // =========================================================
 function HistoryTab() {
   const [history, setHistory] = useState<HistoryLog[]>([]);
@@ -555,6 +555,7 @@ function HistoryTab() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterInstant, setFilterInstant] = useState<"all" | "instant" | "regular">("all");
   const [page, setPage] = useState(1);
+  const [exporting, setExporting] = useState(false); // ✅ TAMBAHKAN
   const limit = 20;
 
   const fetchHistory = useCallback(async () => {
@@ -589,31 +590,42 @@ function HistoryTab() {
     setPage(1);
   }, [searchTerm, filterInstant]);
 
-  const handleExportCSV = () => {
-    if (history.length === 0) {
-      showToast.warning("Tidak ada data untuk diexport");
-      return;
+  // 🔥 PERBAIKI: Export CSV - ambil semua data dari API export
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      let url = `/api/admin/history/export`;
+      const params = new URLSearchParams();
+      
+      if (searchTerm) params.append('search', searchTerm);
+      if (filterInstant === 'instant') params.append('is_instant', 'true');
+      else if (filterInstant === 'regular') params.append('is_instant', 'false');
+      
+      if (params.toString()) url += `?${params.toString()}`;
+
+      const res = await fetch(url);
+      
+      if (res.ok) {
+        const blob = await res.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `history-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(downloadUrl);
+        showToast.success('CSV berhasil didownload (semua data)');
+      } else {
+        const error = await res.json();
+        showToast.error(error.message || 'Gagal export CSV');
+      }
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      showToast.error('Error exporting CSV');
+    } finally {
+      setExporting(false);
     }
-    const headers = ["Session Code", "Transporter", "Resi Number", "Status", "Type", "Location", "Handover By", "Handover At"];
-    const rows = history.map((h) => [
-      h.session_code,
-      h.transporter_name,
-      h.resi_number,
-      h.status,
-      h.is_instant ? "INSTANT" : "REGULAR",
-      h.location_code || "-",
-      h.handover_by || "-",
-      new Date(h.handover_at).toLocaleString("id-ID"),
-    ]);
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `history-logs-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-    showToast.success("CSV berhasil didownload");
   };
 
   const getStatusBadge = (status: string) => {
@@ -684,12 +696,23 @@ function HistoryTab() {
             </button>
           ))}
         </div>
+        {/* 🔥 PERBAIKI: Tombol Export dengan state loading */}
         <button
           onClick={handleExportCSV}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+          disabled={exporting}
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Download className="w-4 h-4" />
-          Export CSV
+          {exporting ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              Mengexport...
+            </>
+          ) : (
+            <>
+              <Download className="w-4 h-4" />
+              Export CSV
+            </>
+          )}
         </button>
       </div>
 
