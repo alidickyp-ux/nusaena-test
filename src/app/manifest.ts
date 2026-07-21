@@ -2,9 +2,9 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'COOL System V3',
-    short_name: 'COOL System',
-    description: 'Warehouse Management System - Sorting & Handover',
+    name: 'Nusaena v1',
+    short_name: 'nusaena',
+    description: 'WMS - Sorting & Handover',
     start_url: '/',
     display: 'standalone',
     orientation: 'portrait',
