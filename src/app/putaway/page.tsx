@@ -212,11 +212,6 @@ export default function PutawayPage() {
         </div>
 
         {/* Info PWA */}
-        <div className="bg-stone-50 p-3 rounded-xl border border-stone-200">
-          <p className="text-[10px] text-stone-400 text-center">
-            💡 Alur Otomatis: Tembak resi $\rightarrow$ Laser otomatis pindah $\rightarrow$ Tembak rak $\rightarrow$ Otomatis tersimpan!
-          </p>
-        </div>
 
         <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-2">
           nusaena v1 · PUTAWAY
