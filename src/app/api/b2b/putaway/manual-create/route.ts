@@ -33,16 +33,22 @@ export async function POST(request: NextRequest) {
     // 🔥 box_id dibuat otomatis (bukan hasil scan barcode fisik) — harus
     // tetap unik karena kolom box_id di-cek unik di scan-box juga.
     const boxId = `MANUAL-${reference}-${Date.now()}`;
-    const boxNumber = boxId.slice(0, 14);
+    // 🔥 Untuk manual create, box_number disamakan dengan reference
+    // (bukan slice dari box_id otomatis) — berat sudah diinput manual
+    // saat create jadi tidak perlu di-parse dari box_id.
+    // box_number dibatasi VARCHAR(14) di DB.
+    const boxNumber = String(reference).slice(0, 14);
 
     // 🔥 Ambil data store dari master_store berdasarkan site — kalau
     // ketemu, address/store_name/city/province auto-fill. Kalau site
     // belum terdaftar di master_store, biarkan kosong (null) supaya
     // bisa diisi manual belakangan lewat "Edit Ship To".
+    // Case-insensitive karena site kini discan/diketik manual.
+    const cleanSite = String(site).trim();
     const storeData = await sql`
       SELECT store_name, address, city, province
       FROM master_store
-      WHERE site = ${site} AND is_active = true
+      WHERE UPPER(site) = UPPER(${cleanSite}) AND is_active = true
       LIMIT 1
     `;
     const store = storeData[0] || {};
@@ -67,7 +73,7 @@ export async function POST(request: NextRequest) {
         ${boxNumber},
         ${weight || null},
         ${volume || null},
-        ${site},
+        ${cleanSite},
         ${store.store_name || null},
         ${store.address || null},
         ${store.city || null},

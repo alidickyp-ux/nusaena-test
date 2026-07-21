@@ -32,9 +32,14 @@ interface SiteData {
   province: string;
 }
 
+// 🔥 8 lokasi staging tetap
+const STAGING_LOCATIONS = Array.from({ length: 8 }, (_, i) => `STG-OUT-${String(i + 1).padStart(2, "0")}`);
+
 export default function B2BPutawayPage() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const siteInputRef = useRef<HTMLInputElement>(null);
+  const locationSelectRef = useRef<HTMLSelectElement>(null);
   const [loading, setLoading] = useState(false);
   const [operatorId, setOperatorId] = useState("");
   
@@ -57,6 +62,12 @@ export default function B2BPutawayPage() {
   // 🔥 State untuk edit
   const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<BoxData>>({});
+
+  // 🔥 Cocokkan site yang sedang diketik/discan ke master store (client-side,
+  // case-insensitive) supaya nama toko langsung muncul tanpa perlu simpan dulu
+  const matchedStore = sites.find(
+    (s) => s.site.trim().toLowerCase() === selectedSite.trim().toLowerCase()
+  );
 
   // Fetch user
   useEffect(() => {
@@ -122,7 +133,7 @@ export default function B2BPutawayPage() {
         
         setStep("box");
         playAcceptedSound();
-        setTimeout(() => inputRef.current?.focus(), 200);
+        setTimeout(() => siteInputRef.current?.focus(), 200);
       } else {
         showToast.error(result.message || "Gagal scan reference");
         playRejectedSound();
@@ -137,15 +148,25 @@ export default function B2BPutawayPage() {
   };
 
   // Handle scan box
-  const handleScanBox = async () => {
+  // 🔥 locationOverride: dipakai saat auto-submit begitu location dipilih dari
+  // dropdown — di titik itu state `stagingLocation` belum ter-update (closure
+  // masih lihat nilai lama), jadi nilai yang baru dipilih dikirim langsung.
+  const handleScanBox = async (locationOverride?: string) => {
     const cleanBoxId = boxId.trim();
+    const locationToUse = locationOverride ?? stagingLocation;
+
     if (!cleanBoxId) {
       showToast.error("Scan box ID terlebih dahulu");
       return;
     }
 
-    if (!selectedSite) {
-      showToast.error("Pilih site terlebih dahulu");
+    if (!selectedSite.trim()) {
+      showToast.error("Scan site terlebih dahulu");
+      return;
+    }
+
+    if (!locationToUse) {
+      showToast.error("Pilih location terlebih dahulu");
       return;
     }
 
@@ -157,8 +178,8 @@ export default function B2BPutawayPage() {
         body: JSON.stringify({
           reference: reference,
           box_id: cleanBoxId,
-          site: selectedSite,
-          staging_location: stagingLocation,
+          site: selectedSite.trim(),
+          staging_location: locationToUse,
         }),
       });
 
@@ -171,6 +192,8 @@ export default function B2BPutawayPage() {
         // Add to list with full data
         setBoxes(prev => [...prev, result.data]);
         setTotalBox(result.total_box);
+        // 🔥 Reset box id & location untuk box berikutnya, site tetap
+        // (biasanya beberapa box berturut-turut menuju site yang sama)
         setBoxId("");
         setStagingLocation("");
         
@@ -256,6 +279,9 @@ export default function B2BPutawayPage() {
       setStep("reference");
       setBoxes([]);
       setReference("");
+      setBoxId("");
+      setSelectedSite("");
+      setStagingLocation("");
       setStatusMsg({ text: "", type: "" });
     } else {
       router.push("/b2b");
@@ -343,7 +369,7 @@ export default function B2BPutawayPage() {
           </div>
 
           <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-2">
-            COOL SYSTEM V3 · B2B PUTAWAY
+            nusaena v1 · B2B PUTAWAY
           </footer>
         </div>
       </OperatorShell>
@@ -401,55 +427,105 @@ export default function B2BPutawayPage() {
         <div className="bg-white p-4 rounded-2xl border border-stone-200 space-y-3">
           <div>
             <label className="block text-stone-500 font-bold uppercase text-xs tracking-widest">
-              1. Pilih Site
-            </label>
-            <select
-              value={selectedSite}
-              onChange={(e) => setSelectedSite(e.target.value)}
-              className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 text-sm focus:outline-none focus:border-blue-500"
-            >
-              <option value="">-- Pilih Site --</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.site}>
-                  {s.site} - {s.store_name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-stone-500 font-bold uppercase text-xs tracking-widest">
-              2. Staging Location
+              1. Scan Site
             </label>
             <input
+              ref={siteInputRef}
               type="text"
-              placeholder="Contoh: A-01-03"
-              value={stagingLocation}
-              onChange={(e) => setStagingLocation(e.target.value)}
-              className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 text-sm focus:outline-none focus:border-blue-500 uppercase"
+              autoFocus
+              disabled={loading}
+              list="site-datalist"
+              placeholder="Scan / ketik kode site..."
+              value={selectedSite}
+              onChange={(e) => setSelectedSite(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && selectedSite.trim()) {
+                  e.preventDefault();
+                  inputRef.current?.focus();
+                }
+              }}
+              className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 font-mono text-lg font-semibold focus:outline-none focus:border-blue-500 disabled:opacity-50 uppercase"
             />
+            <datalist id="site-datalist">
+              {sites.map((s) => (
+                <option key={s.id} value={s.site} />
+              ))}
+            </datalist>
+
+            {/* 🔥 Preview info toko dari master_store, real-time saat site diketik/discan */}
+            {selectedSite.trim() && (
+              matchedStore ? (
+                <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                  <p className="text-xs font-bold text-emerald-800">{matchedStore.store_name}</p>
+                  <p className="text-[10px] text-emerald-600">
+                    {[matchedStore.address, matchedStore.city, matchedStore.province].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-xs font-bold text-amber-700">
+                    ⚠️ Site "{selectedSite.trim()}" tidak ditemukan di master store — data toko akan dikosongkan
+                  </p>
+                </div>
+              )
+            )}
           </div>
 
           <div>
             <label className="block text-stone-500 font-bold uppercase text-xs tracking-widest">
-              3. Scan Box ID
+              2. Scan Box ID
             </label>
             <input
               ref={inputRef}
               type="text"
-              autoFocus
               disabled={loading}
               placeholder="Scan box ID..."
               value={boxId}
               onChange={(e) => setBoxId(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !loading && handleScanBox()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && boxId.trim()) {
+                  e.preventDefault();
+                  if (!selectedSite.trim()) {
+                    showToast.error("Scan site terlebih dahulu");
+                    siteInputRef.current?.focus();
+                    return;
+                  }
+                  // 🔥 Box id belum langsung disimpan — lanjut ke pilih location dulu
+                  locationSelectRef.current?.focus();
+                }
+              }}
               className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 font-mono text-lg font-semibold focus:outline-none focus:border-blue-500 disabled:opacity-50"
             />
           </div>
 
+          <div>
+            <label className="block text-stone-500 font-bold uppercase text-xs tracking-widest">
+              3. Pilih Location
+            </label>
+            <select
+              ref={locationSelectRef}
+              value={stagingLocation}
+              disabled={loading}
+              onChange={(e) => {
+                const value = e.target.value;
+                setStagingLocation(value);
+                if (value && boxId.trim() && selectedSite.trim()) {
+                  // 🔥 Auto simpan begitu location dipilih — ini langkah terakhir
+                  handleScanBox(value);
+                }
+              }}
+              className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 text-sm focus:outline-none focus:border-blue-500"
+            >
+              <option value="">-- Pilih Location --</option>
+              {STAGING_LOCATIONS.map((loc) => (
+                <option key={loc} value={loc}>{loc}</option>
+              ))}
+            </select>
+          </div>
+
           <button
-            onClick={handleScanBox}
-            disabled={loading || !selectedSite}
+            onClick={() => handleScanBox()}
+            disabled={loading || !selectedSite.trim() || !boxId.trim() || !stagingLocation}
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "⏳ Menyimpan..." : "📦 Simpan Box"}
@@ -568,12 +644,16 @@ export default function B2BPutawayPage() {
                           </div>
                           <div>
                             <label className="text-[9px] text-stone-400 font-bold uppercase">Staging</label>
-                            <input
-                              type="text"
+                            <select
                               value={editForm.staging_location || ""}
                               onChange={(e) => setEditForm({ ...editForm, staging_location: e.target.value })}
                               className="w-full px-2 py-1 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            />
+                            >
+                              <option value="">-- Pilih --</option>
+                              {STAGING_LOCATIONS.map((loc) => (
+                                <option key={loc} value={loc}>{loc}</option>
+                              ))}
+                            </select>
                           </div>
                         </div>
                       </div>
@@ -624,7 +704,7 @@ export default function B2BPutawayPage() {
         </div>
 
         <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-2">
-          COOL SYSTEM V3 · B2B PUTAWAY
+          nusaena v1 · B2B PUTAWAY
         </footer>
       </div>
     </OperatorShell>

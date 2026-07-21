@@ -328,7 +328,7 @@ export default function PickupPage() {
           )}
 
           <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-2">
-            COOL SYSTEM V3 · PICKUP
+            nusaena v1 · PICKUP
           </footer>
         </div>
       </OperatorShell>
@@ -436,7 +436,7 @@ export default function PickupPage() {
           </div>
 
           <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-2">
-            COOL SYSTEM V3 · PICKUP
+            nusaena v1 · PICKUP
           </footer>
         </div>
       </OperatorShell>

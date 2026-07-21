@@ -136,7 +136,7 @@ export default function LoginPage() {
           </form>
 
           <div className="text-center mt-8 pt-6 border-t border-slate-100">
-            <p className="text-xs text-slate-400">&copy; 2026 COOL System V3.</p>
+            <p className="text-xs text-slate-400">&copy; 2026 . nusaena v1</p>
           </div>
         </div>
       </div>

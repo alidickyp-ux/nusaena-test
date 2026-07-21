@@ -27,6 +27,7 @@ interface ReferenceData {
 
 interface BoxData {
   id: string;
+  reference: string;
   box_id: string;
   box_number: string;
   weight: string;
@@ -47,7 +48,10 @@ export default function B2BLoadingPage() {
   const [selectedVendorId, setSelectedVendorId] = useState<number | "">("");
   const [selectedVendorName, setSelectedVendorName] = useState("");
   const [references, setReferences] = useState<ReferenceData[]>([]);
-  const [selectedReference, setSelectedReference] = useState("");
+  // 🔥 checkedReferences: reference yang dicentang di daftar (belum dikonfirmasi)
+  // activeReferences: reference yang sudah dikonfirmasi ("OK") dan sedang discan bareng
+  const [checkedReferences, setCheckedReferences] = useState<string[]>([]);
+  const [activeReferences, setActiveReferences] = useState<string[]>([]);
   const [boxes, setBoxes] = useState<BoxData[]>([]);
   const [scanBarcode, setScanBarcode] = useState("");
   const [remainingBoxes, setRemainingBoxes] = useState(0);
@@ -159,33 +163,57 @@ export default function B2BLoadingPage() {
     
     setSelectedVendorName(vendor.vendor_name);
     setCompletedReferences([]);
+    setCheckedReferences([]);
+    setActiveReferences([]);
     fetchReferences(vendor.vendor_name);
     setStep("reference");
     setTimeout(() => inputRef.current?.focus(), 200);
   };
 
-  // 🔥 Select reference and fetch boxes
-  const handleSelectReference = async (reference: string) => {
-    // Cek apakah reference sudah selesai
+  // 🔥 Centang / hapus centang reference di daftar (belum langsung fetch box)
+  const toggleReferenceChecked = (reference: string) => {
     if (completedReferences.includes(reference)) {
       showToast.info(`Reference ${reference} sudah selesai`);
       return;
     }
-    
-    setSelectedReference(reference);
+    setCheckedReferences((prev) =>
+      prev.includes(reference)
+        ? prev.filter((r) => r !== reference)
+        : [...prev, reference]
+    );
+  };
+
+  // 🔥 Konfirmasi reference yang sudah dicentang ("OK") — ambil gabungan box
+  // dari semua reference yang dipilih, lalu masuk ke layar scan bareng
+  const handleConfirmReferences = async () => {
+    if (checkedReferences.length === 0) {
+      showToast.error("Pilih minimal 1 reference terlebih dahulu");
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await fetch(`/api/b2b/putaway/list/${encodeURIComponent(reference)}`);
+      const res = await fetch(`/api/b2b/loading/references-boxes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendor_name: selectedVendorName,
+          references: checkedReferences,
+        }),
+      });
       if (res.ok) {
         const data = await res.json();
+        setActiveReferences(checkedReferences);
         setBoxes(data.data?.boxes || []);
-        const remaining = data.data?.boxes?.filter((b: BoxData) => b.loading_status === 'staging').length || 0;
+        const remaining = data.data?.staging_box ?? 0;
         setRemainingBoxes(remaining);
-        setStatusMsg({ 
-          text: `📦 ${remaining} box perlu discan ulang untuk validasi`, 
-          type: "info" 
+        setStatusMsg({
+          text: `📦 ${remaining} box perlu discan ulang untuk validasi`,
+          type: "info",
         });
         setTimeout(() => inputRef.current?.focus(), 200);
+      } else {
+        showToast.error("Gagal mengambil daftar box");
       }
     } catch (error) {
       showToast.error("Error fetching boxes");
@@ -194,7 +222,7 @@ export default function B2BLoadingPage() {
     }
   };
 
-  // 🔥 Handle scan box validation
+  // 🔥 Handle scan box validation — dicek terhadap semua activeReferences (batch)
   const handleScanBox = async () => {
     const cleanBarcode = scanBarcode.trim();
     if (!cleanBarcode) return;
@@ -205,7 +233,7 @@ export default function B2BLoadingPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reference: selectedReference,
+          references: activeReferences,
           box_id: cleanBarcode,
           vendor_name: selectedVendorName,
         }),
@@ -216,46 +244,52 @@ export default function B2BLoadingPage() {
       if (res.ok && result.success) {
         playAcceptedSound();
         showToast.success(result.message);
-        
-        setBoxes(prev => 
-          prev.map(box => 
-            box.box_id === cleanBarcode 
+
+        const matchedRef = result.matched_reference as string;
+
+        setBoxes(prev =>
+          prev.map(box =>
+            box.box_id === cleanBarcode
               ? { ...box, loading_status: 'loading_complete' }
               : box
           )
         );
         setRemainingBoxes(result.remaining);
         setScanBarcode("");
-        
-        if (result.all_done) {
-          // 🔥 Reference selesai, tandai sebagai completed
-          setCompletedReferences(prev => [...prev, selectedReference]);
-          
-          // 🔥 Update status di daftar references
-          setReferences(prev => 
-            prev.map(ref => 
-              ref.reference === selectedReference 
+
+        if (result.reference_done) {
+          // 🔥 Reference ini (salah satu dari batch) sudah selesai
+          setCompletedReferences(prev =>
+            prev.includes(matchedRef) ? prev : [...prev, matchedRef]
+          );
+          setReferences(prev =>
+            prev.map(ref =>
+              ref.reference === matchedRef
                 ? { ...ref, is_complete: true, loaded_box: ref.total_box }
                 : ref
             )
           );
-          
-          setStatusMsg({ 
-            text: `✅ Reference ${selectedReference} selesai!`, 
-            type: "success" 
+        }
+
+        if (result.all_done) {
+          // 🔥 Semua reference dalam batch ini sudah selesai
+          setStatusMsg({
+            text: `✅ ${activeReferences.length > 1 ? "Semua reference terpilih" : `Reference ${activeReferences[0]}`} selesai!`,
+            type: "success"
           });
-          
+
           // 🔥 Kembali ke daftar reference setelah 1.5 detik
           setTimeout(() => {
-            setSelectedReference("");
+            setActiveReferences([]);
+            setCheckedReferences([]);
             setBoxes([]);
             // Refresh references
             fetchReferences(selectedVendorName);
           }, 1500);
         } else {
-          setStatusMsg({ 
-            text: `✅ ${cleanBarcode} valid! ${result.remaining} box tersisa`, 
-            type: "success" 
+          setStatusMsg({
+            text: `✅ ${cleanBarcode} valid! ${result.remaining} box tersisa`,
+            type: "success"
           });
         }
         setTimeout(() => inputRef.current?.focus(), 200);
@@ -346,10 +380,13 @@ export default function B2BLoadingPage() {
       setSelectedVendorName("");
       setReferences([]);
       setCompletedReferences([]);
+      setCheckedReferences([]);
+      setActiveReferences([]);
       setStatusMsg({ text: "", type: "" });
     } else if (step === "handover") {
       setStep("reference");
-      setSelectedReference("");
+      setActiveReferences([]);
+      setCheckedReferences([]);
       setBoxes([]);
       setStatusMsg({ text: "", type: "" });
     } else {
@@ -361,7 +398,8 @@ export default function B2BLoadingPage() {
     setStep("vendor");
     setSelectedVendorId("");
     setSelectedVendorName("");
-    setSelectedReference("");
+    setCheckedReferences([]);
+    setActiveReferences([]);
     setReferences([]);
     setBoxes([]);
     setCompletedReferences([]);
@@ -437,7 +475,7 @@ export default function B2BLoadingPage() {
           </div>
 
           <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-2">
-            COOL SYSTEM V3 · B2B LOADING
+            nusaena v1 · B2B LOADING
           </footer>
         </div>
       </OperatorShell>
@@ -449,8 +487,8 @@ export default function B2BLoadingPage() {
   // =============================================
   if (step === "reference") {
 
-    // 🔥 Kalau sudah pilih reference, tampilkan layar scan box (bukan list reference lagi)
-    if (selectedReference) {
+    // 🔥 Kalau sudah konfirmasi reference (OK), tampilkan layar scan box gabungan
+    if (activeReferences.length > 0) {
       const stagingBoxes = boxes.filter((b) => b.loading_status === "staging");
       const doneBoxes = boxes.filter((b) => b.loading_status !== "staging");
 
@@ -466,7 +504,8 @@ export default function B2BLoadingPage() {
               </div>
               <button
                 onClick={() => {
-                  setSelectedReference("");
+                  setActiveReferences([]);
+                  setCheckedReferences([]);
                   setBoxes([]);
                   setStatusMsg({ text: "", type: "" });
                 }}
@@ -479,8 +518,14 @@ export default function B2BLoadingPage() {
             <div className="bg-purple-50 border border-purple-200 p-4 rounded-xl">
               <div className="flex justify-between items-center">
                 <div>
-                  <p className="font-bold text-purple-800 font-mono">{selectedReference}</p>
-                  <p className="text-xs text-purple-600">{selectedVendorName}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {activeReferences.map((ref) => (
+                      <span key={ref} className="font-bold text-purple-800 font-mono text-xs bg-purple-100 px-2 py-0.5 rounded-md">
+                        {ref}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-xs text-purple-600 mt-1">{selectedVendorName}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-2xl font-bold text-purple-700">
@@ -553,7 +598,12 @@ export default function B2BLoadingPage() {
                   key={b.id}
                   className="flex items-center justify-between p-2 rounded-lg text-xs bg-white border border-stone-200"
                 >
-                  <span className="font-mono">{b.box_id}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono">{b.box_id}</span>
+                    {activeReferences.length > 1 && (
+                      <span className="text-[9px] text-stone-400 font-mono">{b.reference}</span>
+                    )}
+                  </div>
                   <span>⏳ Pending</span>
                 </div>
               ))}
@@ -562,14 +612,19 @@ export default function B2BLoadingPage() {
                   key={b.id}
                   className="flex items-center justify-between p-2 rounded-lg text-xs bg-emerald-50 text-emerald-700"
                 >
-                  <span className="font-mono">{b.box_id}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono">{b.box_id}</span>
+                    {activeReferences.length > 1 && (
+                      <span className="text-[9px] text-emerald-500 font-mono">{b.reference}</span>
+                    )}
+                  </div>
                   <span>✅ DONE</span>
                 </div>
               ))}
             </div>
 
             <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-2">
-              COOL SYSTEM V3 · B2B LOADING
+              nusaena v1 · B2B LOADING
             </footer>
           </div>
         </OperatorShell>
@@ -641,36 +696,49 @@ export default function B2BLoadingPage() {
               references.map((ref) => {
                 const progress = ref.total_box > 0 ? (ref.loaded_box / ref.total_box) * 100 : 0;
                 const isComplete = ref.is_complete || false;
+                const isChecked = checkedReferences.includes(ref.reference);
                 
                 return (
                   <button
                     key={ref.reference}
-                    onClick={() => {
-                      if (!isComplete) {
-                        handleSelectReference(ref.reference);
-                      } else {
-                        showToast.info(`✅ ${ref.reference} sudah selesai`);
-                      }
-                    }}
-                    className={`w-full p-4 rounded-2xl border-l-4 border border-stone-200 shadow-sm hover:shadow-md transition-all text-left active:scale-[0.98] ${
-                      isComplete 
-                        ? "border-l-emerald-500 bg-emerald-50/30" 
-                        : "border-l-purple-500 bg-white"
+                    onClick={() => toggleReferenceChecked(ref.reference)}
+                    disabled={isComplete}
+                    className={`w-full p-4 rounded-2xl border-l-4 border shadow-sm transition-all text-left active:scale-[0.98] ${
+                      isComplete
+                        ? "border-l-emerald-500 border-stone-200 bg-emerald-50/30 cursor-not-allowed"
+                        : isChecked
+                        ? "border-l-purple-600 border-purple-300 bg-purple-50 hover:shadow-md"
+                        : "border-l-purple-500 border-stone-200 bg-white hover:shadow-md"
                     }`}
                   >
                     <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-mono font-bold text-stone-900">
-                          {ref.reference}
-                          {isComplete && (
-                            <span className="ml-2 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-                              ✅ Selesai
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-stone-400">
-                          {ref.total_box} box · {ref.total_weight}kg
-                        </p>
+                      <div className="flex items-start gap-3">
+                        {!isComplete && (
+                          <div
+                            className={`mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${
+                              isChecked ? "bg-purple-600 border-purple-600" : "border-stone-300 bg-white"
+                            }`}
+                          >
+                            {isChecked && (
+                              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-mono font-bold text-stone-900">
+                            {ref.reference}
+                            {isComplete && (
+                              <span className="ml-2 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                                ✅ Selesai
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-stone-400">
+                            {ref.total_box} box · {ref.total_weight}kg
+                          </p>
+                        </div>
                       </div>
                       <div className="text-right">
                         <p className={`text-xs font-bold ${isComplete ? 'text-emerald-600' : 'text-amber-600'}`}>
@@ -690,6 +758,17 @@ export default function B2BLoadingPage() {
             )}
           </div>
 
+          {/* 🔥 TOMBOL OK - konfirmasi reference yang dicentang, lanjut ke layar scan gabungan */}
+          {checkedReferences.length > 0 && (
+            <button
+              onClick={handleConfirmReferences}
+              disabled={loading}
+              className="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-extrabold rounded-xl text-base shadow-lg shadow-purple-600/25 active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              {loading ? "⏳ Memuat..." : `✅ OK — Lanjut Scan (${checkedReferences.length} reference dipilih)`}
+            </button>
+          )}
+
           {/* 🔥 TOMBOL SELESAIKAN LOADING - Bisa lanjut kalau minimal 1 reference sudah selesai.
               Vendor bisa punya beberapa reference; tidak wajib semua selesai dulu —
               operator yang menentukan kapan cukup untuk handover. */}
@@ -703,7 +782,7 @@ export default function B2BLoadingPage() {
           )}
 
           <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-2">
-            COOL SYSTEM V3 · B2B LOADING
+            nusaena v1 · B2B LOADING
           </footer>
         </div>
       </OperatorShell>

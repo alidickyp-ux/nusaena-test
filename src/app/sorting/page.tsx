@@ -498,7 +498,7 @@ export default function SortingPage() {
         </div>
 
         <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-2">
-          COOL SYSTEM V3 · HYBRID ROUTING ENGINE
+          nusaena v1 · SORTING
         </footer>
       </div>
     </OperatorShell>

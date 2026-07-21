@@ -58,7 +58,19 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
       })
     : "-";
 
-  const references = Array.from(new Set(details.map((d) => d.reference)));
+  // Group details by reference for summary
+  const referenceSummary = details.reduce((acc, d) => {
+    if (!acc[d.reference]) {
+      acc[d.reference] = {
+        store_name: d.store_name,
+        total_box: 0,
+        total_weight: 0,
+      };
+    }
+    acc[d.reference].total_box += 1;
+    acc[d.reference].total_weight += parseFloat(d.weight || "0");
+    return acc;
+  }, {} as Record<string, { store_name: string; total_box: number; total_weight: number }>);
 
   const SignatureCard = ({
     label,
@@ -98,6 +110,17 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
           font-family: Arial, sans-serif;
         }
         .print-page:last-child { page-break-after: auto; }
+        .note-list {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+        }
+        .note-list li {
+          padding: 2px 0;
+          font-size: 10px;
+          color: #4a4a4a;
+          line-height: 1.5;
+        }
       `}</style>
 
       {Array.from({ length: totalPages }).map((_, pageIndex) => {
@@ -111,7 +134,7 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
           <div key={pageIndex} className="print-page">
             {/* Header */}
             <div className="text-center mb-4">
-              <h1 className="text-2xl font-bold uppercase tracking-wide">Surat Jalan B2B</h1>
+              <h1 className="text-2xl font-bold uppercase tracking-wide">SURAT JALAN</h1>
               <div className="flex items-center justify-center gap-3 mt-1">
                 <span className="font-mono font-bold text-blue-700">
                   {manifest.delivery_number}
@@ -144,16 +167,6 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
                           <td className="font-semibold">{manifest.vendor_name}</td>
                         </tr>
                         <tr>
-                          <td className="text-gray-500 py-0.5 pr-2 align-top">Reference</td>
-                          <td className="font-mono font-semibold">{references.join(", ")}</td>
-                        </tr>
-                        <tr>
-                          <td className="text-gray-500 py-0.5 pr-2 align-top">No. Resi</td>
-                          <td className="font-mono font-semibold">
-                            {manifest.resi_number || "-"}
-                          </td>
-                        </tr>
-                        <tr>
                           <td className="text-gray-500 py-0.5 pr-2 align-top">Total Box</td>
                           <td className="font-semibold">{manifest.total_box}</td>
                         </tr>
@@ -168,17 +181,17 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
                   </div>
                   <div className="border border-gray-200 rounded-lg p-3">
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
-                      Informasi Kendaraan
+                      Informasi Operasional
                     </p>
                     <table className="text-sm w-full">
                       <tbody>
                         <tr>
-                          <td className="text-gray-500 py-0.5 pr-2 align-top w-28">Driver</td>
-                          <td className="font-semibold">{headerInfo?.driver || "-"}</td>
+                          <td className="text-gray-500 py-0.5 pr-2 align-top w-28">Operator</td>
+                          <td className="font-semibold">{headerInfo?.operator || "-"}</td>
                         </tr>
                         <tr>
-                          <td className="text-gray-500 py-0.5 pr-2 align-top">Operator</td>
-                          <td className="font-semibold">{headerInfo?.operator || "-"}</td>
+                          <td className="text-gray-500 py-0.5 pr-2 align-top">Driver</td>
+                          <td className="font-semibold">{headerInfo?.driver || "-"}</td>
                         </tr>
                         <tr>
                           <td className="text-gray-500 py-0.5 pr-2 align-top">Security</td>
@@ -195,36 +208,47 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
               </>
             )}
 
-            {/* Tabel Box */}
+            {/* Tabel Box - Updated columns */}
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="bg-gray-100">
                   <th className="border border-gray-200 px-2 py-1 text-left">Reference</th>
-                  <th className="border border-gray-200 px-2 py-1 text-left">Box ID</th>
-                  <th className="border border-gray-200 px-2 py-1 text-left">Berat (kg)</th>
-                  <th className="border border-gray-200 px-2 py-1 text-left">Toko</th>
+                  <th className="border border-gray-200 px-2 py-1 text-left">Nama Toko</th>
+                  <th className="border border-gray-200 px-2 py-1 text-center">Total Box / Coly</th>
+                  <th className="border border-gray-200 px-2 py-1 text-center">Total Berat (kg)</th>
                 </tr>
               </thead>
               <tbody>
-                {pageItems.map((d) => (
-                  <tr key={d.box_id}>
-                    <td className="border border-gray-200 px-2 py-1 font-mono">{d.reference}</td>
-                    <td className="border border-gray-200 px-2 py-1 font-mono">{d.box_id}</td>
-                    <td className="border border-gray-200 px-2 py-1">{d.weight}</td>
-                    <td className="border border-gray-200 px-2 py-1">{d.store_name}</td>
+                {Object.entries(referenceSummary).map(([reference, data]) => (
+                  <tr key={reference}>
+                    <td className="border border-gray-200 px-2 py-1 font-mono">{reference}</td>
+                    <td className="border border-gray-200 px-2 py-1">{data.store_name}</td>
+                    <td className="border border-gray-200 px-2 py-1 text-center font-bold">{data.total_box}</td>
+                    <td className="border border-gray-200 px-2 py-1 text-center">
+                      {data.total_weight.toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                    </td>
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="bg-gray-50 font-bold">
+                  <td colSpan={2} className="border border-gray-200 px-2 py-1 text-right">TOTAL</td>
+                  <td className="border border-gray-200 px-2 py-1 text-center">{manifest.total_box}</td>
+                  <td className="border border-gray-200 px-2 py-1 text-center">
+                    {Number(manifest.total_weight).toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
 
-            {/* Footer - Tanda Tangan, hanya di halaman terakhir */}
+            {/* Footer - Tanda Tangan & Catatan, hanya di halaman terakhir */}
             {isLastPage && (
               <div className="mt-auto pt-4">
                 <div className="border-b-2 border-gray-800 mb-4"></div>
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
                   Tanda Tangan
                 </p>
-                <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
+                <div className="grid grid-cols-2 gap-4 max-w-md mx-auto mb-4">
                   <SignatureCard
                     label="Driver"
                     name={headerInfo?.driver || null}
@@ -236,7 +260,18 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
                     signature={headerInfo?.security_sign || null}
                   />
                 </div>
-                <div className="border-t border-gray-200 mt-4 pt-2">
+
+                {/* Catatan */}
+                <div className="border-t border-gray-300 pt-3 mt-2">
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Catatan:</p>
+                  <ul className="note-list">
+                    <li>1. Barang yang telah diterima harus sesuai dengan yang tertera di surat jalan ini.</li>
+                    <li>2. Surat jalan ini harus dibawa oleh driver selama pengiriman.</li>
+                    <li>3. Tanda tangan penerima menunjukkan bahwa barang telah diterima dalam kondisi baik.</li>
+                  </ul>
+                </div>
+
+                <div className="border-t border-gray-200 mt-3 pt-2">
                   <p className="text-center text-xs text-gray-400">
                     Dokumen ini dicetak secara otomatis dari sistem WMS | Dicetak:{" "}
                     {new Date().toLocaleString("id-ID")}

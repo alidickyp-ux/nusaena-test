@@ -17,42 +17,56 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { reference, box_id, vendor_name } = body;
+    const { box_id, vendor_name } = body;
+    // 🔥 references: array of reference yang sedang di-loading bareng (multi-select).
+    // Tetap terima `reference` tunggal untuk kompatibilitas kalau ada pemanggil lama.
+    const references: string[] = Array.isArray(body.references)
+      ? body.references
+      : (body.reference ? [body.reference] : []);
 
-    if (!reference || !box_id || !vendor_name) {
+    if (!box_id || !vendor_name || references.length === 0) {
       return NextResponse.json(
-        { success: false, message: 'Reference, box_id, and vendor_name are required' },
+        { success: false, message: 'box_id, vendor_name, dan references are required' },
         { status: 400 }
       );
     }
 
-    // 🔥 Cek box_id di putaway
-    const boxCheck = await sql`
-      SELECT 
-        id,
-        reference,
-        box_id,
-        loading_status,
-        vendor_name
-      FROM b2b_putaway
-      WHERE box_id = ${box_id}
-        AND reference = ${reference}
-        AND (vendor_name IS NULL OR vendor_name = ${vendor_name})
-    `;
+    // 🔥 Cari box_id di salah satu reference yang sedang dipilih
+    let matchedRow: any = null;
+    for (const ref of references) {
+      const boxCheck = await sql`
+        SELECT 
+          id,
+          reference,
+          box_id,
+          loading_status,
+          vendor_name
+        FROM b2b_putaway
+        WHERE box_id = ${box_id}
+          AND reference = ${ref}
+          AND (vendor_name IS NULL OR vendor_name = ${vendor_name})
+      `;
+      if (boxCheck.length > 0) {
+        matchedRow = boxCheck[0];
+        break;
+      }
+    }
 
-    if (boxCheck.length === 0) {
+    if (!matchedRow) {
       return NextResponse.json(
-        { success: false, message: 'Box tidak ditemukan di reference ini' },
+        { success: false, message: 'Box tidak ditemukan di reference yang dipilih' },
         { status: 404 }
       );
     }
 
-    if (boxCheck[0].loading_status === 'loading_complete') {
+    if (matchedRow.loading_status === 'loading_complete') {
       return NextResponse.json(
         { success: false, message: 'Box sudah di-loading sebelumnya' },
         { status: 400 }
       );
     }
+
+    const matchedReference = matchedRow.reference;
 
     // 🔥 UPDATE: loading_status = 'loading_complete' DAN vendor_name = nama vendor
     await sql`
@@ -62,28 +76,38 @@ export async function POST(request: NextRequest) {
         loading_at = NOW(),
         loading_by = ${userSession.sub}::UUID,
         vendor_name = ${vendor_name}
-      WHERE id = ${boxCheck[0].id}
+      WHERE id = ${matchedRow.id}
     `;
 
-    // 🔥 Hitung sisa box yang masih staging di reference ini
-    const remaining = await sql`
+    // 🔥 Hitung sisa box staging untuk reference yang box ini berasal darinya
+    const remainingForRef = await sql`
       SELECT COUNT(*) as count
       FROM b2b_putaway
-      WHERE reference = ${reference}
+      WHERE reference = ${matchedReference}
         AND loading_status = 'staging'
     `;
+    const refDone = Number(remainingForRef[0].count) === 0;
 
-    // 🔥 Cek apakah semua box sudah loading complete
-    const allDone = Number(remaining[0].count) === 0;
-
-    // 🔥 Jika semua box selesai, update semua box di reference ini dengan vendor_name yang sama
-    if (allDone) {
+    // 🔥 Kalau reference ini sudah selesai semua, samakan vendor_name di sisa baris (kalau ada yang masih NULL)
+    if (refDone) {
       await sql`
         UPDATE b2b_putaway
         SET vendor_name = ${vendor_name}
-        WHERE reference = ${reference}
+        WHERE reference = ${matchedReference}
           AND vendor_name IS NULL
       `;
+    }
+
+    // 🔥 Hitung sisa box staging untuk SEMUA reference yang sedang dipilih bareng (batch)
+    let batchRemaining = 0;
+    for (const ref of references) {
+      const r = await sql`
+        SELECT COUNT(*) as count
+        FROM b2b_putaway
+        WHERE reference = ${ref}
+          AND loading_status = 'staging'
+      `;
+      batchRemaining += Number(r[0].count);
     }
 
     return NextResponse.json({
@@ -91,8 +115,10 @@ export async function POST(request: NextRequest) {
       message: '✅ Box berhasil divalidasi',
       box_id: box_id,
       vendor_name: vendor_name,
-      remaining: Number(remaining[0].count),
-      all_done: allDone,
+      matched_reference: matchedReference,
+      reference_done: refDone,
+      remaining: batchRemaining,
+      all_done: batchRemaining === 0,
     });
 
   } catch (error) {

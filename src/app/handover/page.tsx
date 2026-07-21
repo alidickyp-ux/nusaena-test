@@ -801,7 +801,7 @@ const handleMarkFromSearch = async (barcode: string, reason: "NOT_FOUND" | "CANC
           </div>
 
           <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-2">
-            COOL SYSTEM V3 · HANDOVER
+            nusaena v1 · HANDOVER
           </footer>
         </div>
       </OperatorShell>
@@ -884,7 +884,7 @@ const handleMarkFromSearch = async (barcode: string, reason: "NOT_FOUND" | "CANC
           </div>
 
           <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-2">
-            COOL SYSTEM V3 · HANDOVER
+            nusaena v1 · HANDOVER
           </footer>
         </div>
       </OperatorShell>

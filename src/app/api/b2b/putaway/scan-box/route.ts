@@ -27,13 +27,18 @@ export async function POST(request: NextRequest) {
     }
 
     // 🔥 Parse box_id
-    // box_number = 14 karakter pertama
-    // weight = angka di AKHIR string, setelah pemisah terakhir "-" atau "#"
-    // (bukan match pertama — box_id juga mengandung nomor box di tengah,
-    // misal "PCB23-26001234BOX01-15.6" atau "PCB23-26002112BOX21#15.6")
-    const boxNumber = box_id.slice(0, 14);
+    // Format: PCB23-26002071BOX-01-15.6
+    //   - box_number = token "BOX-01" (nomor box), BUKAN 14 karakter pertama
+    //     (14 karakter pertama cuma kebetulan sama panjang dengan prefix
+    //     "PCB23-26002071", itu bukan box number)
+    //   - weight = angka di AKHIR string, setelah pemisah terakhir "-" atau "#"
+    // Contoh lain yang harus tetap kebaca benar: "PCB23-26001234BOX01-15.6"
+    // atau "PCB23-26002112BOX21#15.6"
     const weightMatch = box_id.match(/[-#]([\d.]+)$/);
     const weight = weightMatch ? weightMatch[1] : null;
+
+    const boxNumberMatch = box_id.match(/(BOX-?\d+)(?=[-#][\d.]+$)/i);
+    const boxNumber = boxNumberMatch ? boxNumberMatch[1] : box_id.slice(0, 14);
 
     // 🔥 Cek apakah box_id sudah ada
     const existingBox = await sql`
@@ -47,11 +52,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 🔥 Ambil data store dari master_store
+    // 🔥 Ambil data store dari master_store — site sekarang discan/diketik manual,
+    // jadi pencocokan dibuat case-insensitive supaya tidak gagal cuma karena beda huruf besar/kecil
+    const cleanSite = String(site).trim();
     const storeData = await sql`
       SELECT store_name, address, city, province
       FROM master_store
-      WHERE site = ${site} AND is_active = true
+      WHERE UPPER(site) = UPPER(${cleanSite}) AND is_active = true
       LIMIT 1
     `;
 
@@ -77,7 +84,7 @@ export async function POST(request: NextRequest) {
         ${box_id},
         ${boxNumber},
         ${weight},
-        ${site},
+        ${cleanSite},
         ${staging_location || null},
         ${store.store_name || null},
         ${store.address || null},

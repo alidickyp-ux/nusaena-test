@@ -219,7 +219,7 @@ export default function PutawayPage() {
         </div>
 
         <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-2">
-          COOL SYSTEM V3 · PUTAWAY
+          nusaena v1 · PUTAWAY
         </footer>
       </div>
     </OperatorShell>
