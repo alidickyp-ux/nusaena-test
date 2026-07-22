@@ -556,16 +556,17 @@ export default function B2BManifestListPage() {
   // 🔥 State untuk create modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
-    reference: '',
-    box_id: '',
-    weight: '',
-    volume: '',
-    site: '',
-    store_name: '',
-    address: '',
-    city: '',
-    province: '',
-  });
+  reference: '',
+  box_id: '',
+  box_number: '',
+  weight: '',
+  volume: '',
+  site: '',
+  store_name: '',
+  address: '',
+  city: '',
+  province: '',
+});
 
   useEffect(() => {
     fetchData();
@@ -685,37 +686,39 @@ export default function B2BManifestListPage() {
 
   // 🔥 handleCreateBox
   const handleCreateBox = async () => {
-    try {
-      const res = await fetch('/api/b2b/putaway/manual-create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(createForm),
-      });
+  try {
+    const res = await fetch('/api/b2b/putaway/manual-create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(createForm),
+    });
 
-      if (res.ok) {
-        showToast.success('✅ Box berhasil dibuat');
-        setIsCreateModalOpen(false);
-        setCreateForm({ 
-          reference: '', 
-          box_id: '', 
-          weight: '', 
-          volume: '', 
-          site: '', 
-          store_name: '', 
-          address: '', 
-          city: '', 
-          province: '' 
-        });
-        fetchData();
-      } else {
-        const error = await res.json();
-        showToast.error(error.message || 'Gagal membuat box');
-      }
-    } catch (error) {
-      console.error('Error creating box:', error);
-      showToast.error('Error creating box');
+    if (res.ok) {
+      showToast.success('✅ Box berhasil dibuat');
+      setIsCreateModalOpen(false);
+      // 🔥 Fix: Include box_number in reset
+      setCreateForm({ 
+        reference: '', 
+        box_id: '', 
+        box_number: '', // Add this line
+        weight: '', 
+        volume: '', 
+        site: '', 
+        store_name: '', 
+        address: '', 
+        city: '', 
+        province: '' 
+      });
+      fetchData();
+    } else {
+      const error = await res.json();
+      showToast.error(error.message || 'Gagal membuat box');
     }
-  };
+  } catch (error) {
+    console.error('Error creating box:', error);
+    showToast.error('Error creating box');
+  }
+};
 
   const handleEditClick = (ref: ReferenceData) => {
     setEditingRef(ref);
@@ -1272,139 +1275,183 @@ export default function B2BManifestListPage() {
       />
 
       {/* 🔥 Modal Create Box */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-slate-800">Buat Box Baru</h3>
-              <button onClick={() => setIsCreateModalOpen(false)} className="p-1 hover:bg-slate-100 rounded-lg">
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
-            </div>
+{isCreateModalOpen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-bold text-slate-800">Buat Box Baru</h3>
+        <button onClick={() => setIsCreateModalOpen(false)} className="p-1 hover:bg-slate-100 rounded-lg">
+          <X className="w-5 h-5 text-slate-400" />
+        </button>
+      </div>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500">Reference *</label>
-                  <input
-                    type="text"
-                    value={createForm.reference}
-                    onChange={(e) => setCreateForm({ ...createForm, reference: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                    placeholder="SKR23232"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500">Box ID *</label>
-                  <input
-                    type="text"
-                    value={createForm.box_id}
-                    onChange={(e) => setCreateForm({ ...createForm, box_id: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                    placeholder="PCA23-26000466BOX-01"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500">Weight (kg)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={createForm.weight}
-                    onChange={(e) => setCreateForm({ ...createForm, weight: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                    placeholder="15.5"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500">Volume (m³)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={createForm.volume}
-                    onChange={(e) => setCreateForm({ ...createForm, volume: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                    placeholder="0.5"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500">Site</label>
-                <input
-                  type="text"
-                  value={createForm.site}
-                  onChange={(e) => setCreateForm({ ...createForm, site: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                  placeholder="ST00010"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500">Store Name</label>
-                <input
-                  type="text"
-                  value={createForm.store_name}
-                  onChange={(e) => setCreateForm({ ...createForm, store_name: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                  placeholder="SUMATERA"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500">Address</label>
-                <input
-                  type="text"
-                  value={createForm.address}
-                  onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                  placeholder="JL. SUMATERA"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500">City</label>
-                  <input
-                    type="text"
-                    value={createForm.city}
-                    onChange={(e) => setCreateForm({ ...createForm, city: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                    placeholder="BANDUNG"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500">Province</label>
-                  <input
-                    type="text"
-                    value={createForm.province}
-                    onChange={(e) => setCreateForm({ ...createForm, province: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                    placeholder="JAWA BARAT"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={handleCreateBox}
-                  className="flex-1 px-4 py-2 bg-[#0B2B4A] hover:bg-[#123a5e] text-white rounded-lg text-sm font-medium"
-                >
-                  Buat Box
-                </button>
-              </div>
-            </div>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+              Reference *
+            </label>
+            <input
+              type="text"
+              value={createForm.reference}
+              onChange={(e) => setCreateForm({ ...createForm, reference: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+              placeholder="SKR23232"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Reference wajib diisi
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+              Box ID
+            </label>
+            <input
+              type="text"
+              value={createForm.box_id}
+              onChange={(e) => setCreateForm({ ...createForm, box_id: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+              placeholder="Kosongkan untuk auto = Reference"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Biarkan kosong untuk menggunakan Reference sebagai Box ID
+            </p>
           </div>
         </div>
-      )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+              Box Number
+            </label>
+            <input
+              type="text"
+              value={createForm.box_number || ''}
+              onChange={(e) => setCreateForm({ ...createForm, box_number: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+              placeholder="Kosongkan untuk auto = Reference"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Biarkan kosong untuk menggunakan Reference sebagai Box Number
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+              Weight (kg)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={createForm.weight}
+              onChange={(e) => setCreateForm({ ...createForm, weight: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+              placeholder="15.5"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+              Volume (m³)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={createForm.volume}
+              onChange={(e) => setCreateForm({ ...createForm, volume: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+              placeholder="0.5"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+              Site
+            </label>
+            <input
+              type="text"
+              value={createForm.site}
+              onChange={(e) => setCreateForm({ ...createForm, site: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+              placeholder="ST00010"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+            Store Name
+          </label>
+          <input
+            type="text"
+            value={createForm.store_name}
+            onChange={(e) => setCreateForm({ ...createForm, store_name: e.target.value })}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+            placeholder="SUMATERA"
+          />
+          <p className="text-[10px] text-slate-400 mt-1">
+            Akan auto-fill jika site terdaftar di master store
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+            Address
+          </label>
+          <input
+            type="text"
+            value={createForm.address}
+            onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+            placeholder="JL. SUMATERA"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+              City
+            </label>
+            <input
+              type="text"
+              value={createForm.city}
+              onChange={(e) => setCreateForm({ ...createForm, city: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+              placeholder="BANDUNG"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+              Province
+            </label>
+            <input
+              type="text"
+              value={createForm.province}
+              onChange={(e) => setCreateForm({ ...createForm, province: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+              placeholder="JAWA BARAT"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-2 border-t border-slate-200">
+          <button
+            onClick={() => setIsCreateModalOpen(false)}
+            className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+          >
+            Batal
+          </button>
+          <button
+            onClick={handleCreateBox}
+            className="flex-1 px-4 py-2 bg-[#0B2B4A] hover:bg-[#123a5e] text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            Buat Box
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }

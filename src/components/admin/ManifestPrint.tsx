@@ -45,7 +45,7 @@ export default function ManifestPrint({ manifest, historyLogs }: ManifestPrintPr
 
   const tanggalDibuat = manifest.signed_at
     ? new Date(manifest.signed_at).toLocaleString('id-ID', {
-        day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+        day: '2-digit', month: 'long', year: 'numeric',
       })
     : '-';
 
@@ -109,7 +109,6 @@ export default function ManifestPrint({ manifest, historyLogs }: ManifestPrintPr
               <h1 className="text-2xl font-bold uppercase tracking-wide">Bukti Serah Terima</h1>
               <div className="flex items-center justify-center gap-3 mt-1">
                 <span className="font-mono font-bold text-blue-700">{manifest.session_code}</span>
-                <span className="text-xs font-semibold text-gray-400">{statusLabel}</span>
               </div>
               {totalPages > 1 && (
                 <p className="text-xs text-gray-400 mt-1">Halaman {pageIndex + 1} dari {totalPages}</p>
@@ -122,50 +121,51 @@ export default function ManifestPrint({ manifest, historyLogs }: ManifestPrintPr
                 {/* Info boxes */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="border border-gray-200 rounded-lg p-3">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                    <p className="text-xs font-bold text-black-500 uppercase tracking-wide mb-2">
                       Informasi Operasional
                     </p>
                     <table className="text-sm w-full">
                       <tbody>
                         <tr>
-                          <td className="text-gray-500 py-0.5 pr-2 align-top w-28">Tanggal Dibuat</td>
+                          <td className="text-s font-bold text-black-500 py-0.5 pr-2 align-top w-28">Tanggal</td>
                           <td className="font-semibold">{tanggalDibuat}</td>
                         </tr>
                         <tr>
-                          <td className="text-gray-500 py-0.5 pr-2 align-top">Operator</td>
+                          <td className="text-s font-bold py-0.5 pr-2 align-top">Operator</td>
                           <td className="font-semibold">{manifest.operator_name}</td>
                         </tr>
                         <tr>
-                          <td className="text-gray-500 py-0.5 pr-2 align-top">No. Sorting</td>
+                          <td className="text-s font-bold py-0.5 pr-2 align-top">No. Sorting</td>
                           <td className="font-mono font-semibold">{manifest.session_code}</td>
                         </tr>
+                        
                         <tr>
-                          <td className="text-gray-500 py-0.5 pr-2 align-top">Transporter</td>
-                          <td className="font-semibold">{manifest.transporter_name}</td>
-                        </tr>
-                        <tr>
-                          <td className="text-gray-500 py-0.5 pr-2 align-top">Jam Handover</td>
+                          <td className="text-s font-bold py-0.5 pr-2 align-top">Jam Handover</td>
                           <td className="font-semibold">{jamHandover}</td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
-                  <div className="border border-gray-200 rounded-lg p-3">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                  <div className="border border-black-400 rounded-lg p-3">
+                    <p className="text-xs font-bold text-black-500 uppercase tracking-wide mb-2">
                       Informasi Pengiriman
                     </p>
                     <table className="text-sm w-full">
                       <tbody>
                         <tr>
-                          <td className="text-gray-500 py-0.5 pr-2 align-top w-28">Kurir</td>
+                          <td className="text-s font-bold py-0.5 pr-2 align-top">Transporter</td>
+                          <td className="font-semibold">{manifest.transporter_name}</td>
+                        </tr>
+                        <tr>
+                          <td className="text-s font-bold py-0.5 pr-2 align-top w-28">Kurir</td>
                           <td className="font-semibold">{manifest.courier_name}</td>
                         </tr>
                         <tr>
-                          <td className="text-gray-500 py-0.5 pr-2 align-top">Security</td>
+                          <td className="text-s font-bold py-0.5 pr-2 align-top">Security</td>
                           <td className="font-semibold">{manifest.security_name}</td>
                         </tr>
                         <tr>
-                          <td className="text-gray-500 py-0.5 pr-2 align-top">No. Polisi</td>
+                          <td className="text-s font-bold py-0.5 pr-2 align-top">No. Polisi</td>
                           <td className="font-semibold">{manifest.vehicle_number || '-'}</td>
                         </tr>
                       </tbody>
@@ -176,12 +176,12 @@ export default function ManifestPrint({ manifest, historyLogs }: ManifestPrintPr
                 {/* Stats */}
                 <div className="grid grid-cols-4 gap-2 mb-4 text-center">
                   <div className="border border-gray-200 rounded-lg py-2">
-                    <p className="text-xl font-bold text-gray-800">{totalPaket}</p>
-                    <p className="text-xs text-gray-500">Total Paket</p>
+                    <p className="text-xl font-bold text-black-800">{totalPaket}</p>
+                    <p className="text-xs text-black-500">Total Paket</p>
                   </div>
                   <div className="border border-emerald-200 bg-emerald-50 rounded-lg py-2">
                     <p className="text-xl font-bold text-emerald-600">{totalGood}</p>
-                    <p className="text-xs text-gray-500">Good</p>
+                    <p className="text-xs text-blcak-500">Good</p>
                   </div>
                   <div className="border border-yellow-200 bg-yellow-50 rounded-lg py-2">
                     <p className="text-xl font-bold text-yellow-600">{totalCancel}</p>
@@ -250,7 +250,7 @@ export default function ManifestPrint({ manifest, historyLogs }: ManifestPrintPr
                 </div>
                 <div className="border-t border-gray-200 mt-4 pt-2">
                   <p className="text-center text-xs text-gray-400">
-                    Dokumen ini dicetak secara otomatis dari sistem WMS | Dicetak: {new Date().toLocaleString('id-ID')}
+                    Dokumen ini dicetak secara otomatis dari sistem | Dicetak: {new Date().toLocaleString('id-ID')}
                   </p>
                 </div>
               </div>

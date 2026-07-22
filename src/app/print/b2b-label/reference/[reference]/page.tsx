@@ -30,6 +30,10 @@ const SENDER = {
   address: "Jl. Kopo Bihbul Raya No.68, Sayati, Margahayu, Bandung 40228",
 };
 
+// 🔥 Satu warna teks tegas untuk semua isi label — tanpa abu-abu/biru,
+// supaya kontras dan kebaca jelas di thermal printer.
+const INK = "#000000";
+
 export default function B2BLabelByReferencePage() {
   const params = useParams();
   const reference = params.reference as string;
@@ -64,13 +68,21 @@ export default function B2BLabelByReferencePage() {
       }
 
       const boxData = await boxRes.json();
-      setBoxes(boxData.data?.boxes || []);
-      // 🔥 Pakai total yang sudah dihitung API, bukan hitung ulang di
-      // client — satu sumber kebenaran untuk box count / weight / volume.
+      const fetchedBoxes: BoxData[] = boxData.data?.boxes || [];
+      setBoxes(fetchedBoxes);
+
+      // 🔥 total_volume dari API kadang kosong/0 walau box-nya punya nilai
+      // volume masing-masing (lihat contoh data: box.volume = "0.600" tapi
+      // total_volume API balikin 0). Jadi jangan cuma percaya total dari
+      // API — jumlahkan juga langsung dari boxes sebagai fallback, dan
+      // pakai yang lebih besar / yang ada datanya.
+      const summedWeight = fetchedBoxes.reduce((sum, b) => sum + (parseFloat(b.weight) || 0), 0);
+      const summedVolume = fetchedBoxes.reduce((sum, b) => sum + (parseFloat(b.volume || "0") || 0), 0);
+
       setTotals({
-        total_box: boxData.data?.total_box || 0,
-        total_weight: boxData.data?.total_weight || 0,
-        total_volume: boxData.data?.total_volume || 0,
+        total_box: boxData.data?.total_box || fetchedBoxes.length,
+        total_weight: boxData.data?.total_weight || summedWeight,
+        total_volume: boxData.data?.total_volume || summedVolume,
       });
     } catch (err) {
       console.error("Error fetching label data:", err);
@@ -88,8 +100,8 @@ export default function B2BLabelByReferencePage() {
       try {
         JsBarcode(barcodeRef.current, refNumber, {
           format: "CODE128",
-          width: 2.0,
-          height: 40,
+          width: 2.4,
+          height: 60,
           displayValue: false,
           margin: 0,
           background: "#ffffff",
@@ -129,7 +141,10 @@ export default function B2BLabelByReferencePage() {
   }
 
   const shipToLine = [firstBox.address, firstBox.city, firstBox.province].filter(Boolean).join(", ");
-  const hasVolume = totals.total_volume > 0;
+
+  // 🔥 Label ukuran fisik 100mm x 60mm. 378px lebar ≈ 100mm (skala ~3.78px/mm),
+  // jadi padding 3mm ≈ 11px di kedua sisi.
+  const PAD = 11; // 3mm
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-start">
@@ -152,76 +167,210 @@ export default function B2BLabelByReferencePage() {
           height: "226px",
           position: "relative",
           backgroundColor: "#ffffff",
-          border: "1px solid #d6d3d1",
+          border: "1px solid #000000",
           boxSizing: "border-box",
-          padding: "10px",
-          fontFamily: "system-ui, -apple-system, sans-serif",
+          padding: `${PAD}px`,
+          fontFamily: "Arial, 'Helvetica Neue', sans-serif",
           overflow: "hidden",
-          color: "#1c1917"
+          color: INK,
+          display: "flex",
+          flexDirection: "column",
+          WebkitPrintColorAdjust: "exact",
+          printColorAdjust: "exact",
         }}
       >
-        <div style={{ height: "26px", borderBottom: "1px solid #e7e5e4", position: "relative" }}>
-          <span style={{ fontSize: "11px", fontWeight: "800", letterSpacing: "0.5px", color: "#0b2b4a", position: "absolute", left: "0", top: "2px" }}>
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingBottom: "3px",
+            borderBottom: "1.5px solid #000000",
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: "13px", fontWeight: 900, letterSpacing: "0.5px", color: INK }}>
             AWB LABEL
           </span>
-          <span style={{ fontSize: "10px", fontWeight: "900", backgroundColor: "#1c1917", color: "#ffffff", padding: "2px 6px", borderRadius: "4px", position: "absolute", right: "0", top: "-2px", letterSpacing: "0.5px" }}>
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 900,
+              backgroundColor: "#000000",
+              color: "#ffffff",
+              padding: "2px 8px",
+              borderRadius: "3px",
+              letterSpacing: "0.3px",
+              whiteSpace: "nowrap",
+            }}
+          >
             {(firstBox.city || "DOMESTIC").toUpperCase()}
           </span>
         </div>
 
-        <div style={{ height: "26px", borderBottom: "1px solid #e7e5e4", position: "relative", paddingTop: "4px" }}>
-          <div style={{ position: "absolute", left: "0", width: "180px" }}>
-            <span style={{ display: "block", fontSize: "5.5px", fontWeight: "700", color: "#a8a29e", letterSpacing: "0.3px" }}>REFERENCE NUMBER</span>
-            <span style={{ fontSize: "9px", fontWeight: "700", fontFamily: "monospace", color: "#1c1917" }}>{refNumber}</span>
+        {/* Reference / Delivery */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "8px",
+            padding: "4px 0",
+            borderBottom: "1px solid #000000",
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: INK, letterSpacing: "0.3px" }}>
+              REFERENCE NUMBER
+            </span>
+            <span
+              style={{
+                display: "block",
+                fontSize: "11px",
+                fontWeight: 900,
+                fontFamily: "monospace",
+                color: INK,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {refNumber}
+            </span>
           </div>
-          <div style={{ position: "absolute", right: "0", width: "170px", textAlign: "right" }}>
-            <span style={{ display: "block", fontSize: "5.5px", fontWeight: "700", color: "#a8a29e", letterSpacing: "0.3px" }}>DELIVERY NUMBER</span>
-            <span style={{ fontSize: "9px", fontWeight: "700", fontFamily: "monospace", color: "#1c1917" }}>{firstBox.delivery_number || "-"}</span>
-          </div>
-        </div>
-
-        <div style={{ height: "54px", borderBottom: "1px solid #e7e5e4", position: "relative", paddingTop: "4px" }}>
-          <div style={{ position: "absolute", left: "0", width: "175px", borderRight: "1px solid #f5f5f4", height: "46px", paddingRight: "6px" }}>
-            <span style={{ display: "block", fontSize: "5.5px", fontWeight: "700", color: "#a8a29e", letterSpacing: "0.3px", marginBottom: "1px" }}>SENDER</span>
-            <span style={{ display: "block", fontSize: "7px", fontWeight: "700", color: "#1c1917" }}>{SENDER.name}</span>
-            <span style={{ display: "block", fontSize: "5.5px", color: "#57534e", lineHeight: "1.2", marginTop: "1px", height: "13px", overflow: "hidden" }}>{SENDER.address}</span>
-            <span style={{ display: "block", fontSize: "6px", fontWeight: "700", color: "#2563eb", marginTop: "3px" }}>Brand: {firstBox.brand || "-"}</span>
-          </div>
-
-          <div style={{ position: "absolute", left: "185px", width: "173px" }}>
-            <span style={{ display: "block", fontSize: "5.5px", fontWeight: "700", color: "#a8a29e", letterSpacing: "0.3px", marginBottom: "1px" }}>SHIP TO (RECEIVER)</span>
-            <span style={{ display: "block", fontSize: "7px", fontWeight: "700", color: "#1c1917" }}>{firstBox.store_name || "-"}</span>
-            <span style={{ display: "block", fontSize: "5.5px", color: "#57534e", lineHeight: "1.2", marginTop: "1px", height: "24px", overflow: "hidden" }}>{shipToLine}</span>
-          </div>
-        </div>
-
-        <div style={{ height: "24px", borderBottom: "1px solid #e7e5e4", position: "relative", paddingTop: "3px", display: "flex" }}>
-          <div style={{ flex: hasVolume ? "0 0 33%" : "0 0 50%" }}>
-            <span style={{ fontSize: "6.5px", fontWeight: "700", color: "#78716c", marginRight: "3px" }}>QTY:</span>
-            <span style={{ fontSize: "14px", fontWeight: "800", color: "#1c1917" }}>{totals.total_box}</span>
-            <span style={{ fontSize: "6.5px", color: "#78716c", fontWeight: "700", marginLeft: "2px" }}>BOX</span>
-          </div>
-          <div style={{ flex: hasVolume ? "0 0 34%" : "0 0 50%" }}>
-            <span style={{ fontSize: "6.5px", fontWeight: "700", color: "#78716c", marginRight: "3px" }}>WEIGHT:</span>
-            <span style={{ fontSize: "14px", fontWeight: "800", color: "#1c1917" }}>{totals.total_weight.toFixed(1)}</span>
-            <span style={{ fontSize: "6.5px", color: "#78716c", fontWeight: "700", marginLeft: "2px" }}>KG</span>
-          </div>
-          {hasVolume && (
-            <div style={{ flex: "0 0 33%" }}>
-              <span style={{ fontSize: "6.5px", fontWeight: "700", color: "#78716c", marginRight: "3px" }}>VOL:</span>
-              <span style={{ fontSize: "14px", fontWeight: "800", color: "#1c1917" }}>{totals.total_volume.toFixed(2)}</span>
-              <span style={{ fontSize: "6.5px", color: "#78716c", fontWeight: "700", marginLeft: "2px" }}>M³</span>
-            </div>
-          )}
-        </div>
-
-        <div style={{ height: "14px", paddingTop: "3px" }}>
-          <div style={{ fontSize: "6px", fontFamily: "monospace", color: "#78716c", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            <span style={{ fontWeight: "bold" }}>ITEMS:</span> {boxes.map((d) => `${d.box_number}(${d.weight}kg)`).join(" • ")}
+          <div style={{ minWidth: 0, textAlign: "right" }}>
+            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: INK, letterSpacing: "0.3px" }}>
+              DELIVERY NUMBER
+            </span>
+            <span
+              style={{
+                display: "block",
+                fontSize: "11px",
+                fontWeight: 900,
+                fontFamily: "monospace",
+                color: INK,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {firstBox.delivery_number || "-"}
+            </span>
           </div>
         </div>
 
-        <div style={{ position: "absolute", bottom: "6px", left: "10px", right: "10px", height: "56px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        {/* Sender / Ship To */}
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            padding: "5px 0",
+            borderBottom: "1px solid #000000",
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ flex: "1 1 0", minWidth: 0, borderRight: "1px solid #000000", paddingRight: "8px" }}>
+            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: INK, letterSpacing: "0.3px", marginBottom: "2px" }}>
+              SENDER
+            </span>
+            <span style={{ display: "block", fontSize: "9.5px", fontWeight: 900, color: INK }}>
+              {SENDER.name}
+            </span>
+            <span
+              style={{
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                fontSize: "8px",
+                fontWeight: 800,
+                color: INK,
+                lineHeight: "1.3",
+                marginTop: "2px",
+              }}
+            >
+              {SENDER.address}
+            </span>
+            <span style={{ display: "block", fontSize: "8px", fontWeight: 900, color: INK, marginTop: "3px" }}>
+              Brand: {firstBox.brand || "-"}
+            </span>
+          </div>
+
+          <div style={{ flex: "1 1 0", minWidth: 0 }}>
+            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: INK, letterSpacing: "0.3px", marginBottom: "2px" }}>
+              SHIP TO (RECEIVER)
+            </span>
+            <span style={{ display: "block", fontSize: "9.5px", fontWeight: 900, color: INK }}>
+              {firstBox.store_name || "-"}
+            </span>
+            <span
+              style={{
+                display: "-webkit-box",
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                fontSize: "8px",
+                fontWeight: 800,
+                color: INK,
+                lineHeight: "1.3",
+                marginTop: "2px",
+              }}
+            >
+              {shipToLine}
+            </span>
+          </div>
+        </div>
+
+        {/* Qty / Weight / Volume — selalu 3-3nya tampil */}
+        <div
+          style={{
+            display: "flex",
+            padding: "4px 0",
+            borderBottom: "1px solid #000000",
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ flex: "0 0 33%" }}>
+            <span style={{ fontSize: "8px", fontWeight: 900, color: INK, marginRight: "3px" }}>QTY:</span>
+            <span style={{ fontSize: "16px", fontWeight: 900, color: INK }}>{totals.total_box}</span>
+            <span style={{ fontSize: "8px", color: INK, fontWeight: 900, marginLeft: "2px" }}>BOX</span>
+          </div>
+          <div style={{ flex: "0 0 34%" }}>
+            <span style={{ fontSize: "8px", fontWeight: 900, color: INK, marginRight: "3px" }}>WEIGHT:</span>
+            <span style={{ fontSize: "16px", fontWeight: 900, color: INK }}>{totals.total_weight.toFixed(1)}</span>
+            <span style={{ fontSize: "8px", color: INK, fontWeight: 900, marginLeft: "2px" }}>KG</span>
+          </div>
+          <div style={{ flex: "0 0 33%" }}>
+            <span style={{ fontSize: "8px", fontWeight: 900, color: INK, marginRight: "3px" }}>VOLUME:</span>
+            <span style={{ fontSize: "16px", fontWeight: 900, color: INK }}>{totals.total_volume.toFixed(2)}</span>
+            <span style={{ fontSize: "8px", color: INK, fontWeight: 900, marginLeft: "2px" }}></span>
+          </div>
+        </div>
+
+        {/* Items */}
+        <div style={{ padding: "3px 0", flexShrink: 0 }}>
+          <div
+            style={{
+              fontSize: "7.5px",
+              fontWeight: 800,
+              fontFamily: "monospace",
+              color: INK,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            <span style={{ fontWeight: 900 }}>ITEMS:</span> {boxes.map((d) => `${d.box_number}(${d.weight}kg)`).join(" • ")}
+          </div>
+        </div>
+
+        {/* Barcode */}
+        <div
+          style={{
+            flex: "1 1 0",
+            minHeight: 0,
+            display: "flex",
+            alignItems: "left",
+            justifyContent: "center",
+          }}
+        >
           <svg ref={barcodeRef} style={{ width: "100%", height: "100%" }} />
         </div>
       </div>
@@ -239,6 +388,8 @@ export default function B2BLabelByReferencePage() {
           #print-area,
           #print-area * {
             visibility: visible;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           #print-area {
             position: absolute !important;

@@ -31,6 +31,7 @@ export async function GET(
         bp.box_id,
         bp.box_number,
         bp.weight,
+        bp.volume,
         bp.site,
         bp.staging_location,
         bp.store_name,
@@ -57,7 +58,8 @@ export async function GET(
     const total = await sql`
       SELECT 
         COUNT(*) as total_box,
-        SUM(weight::DECIMAL) as total_weight
+        SUM(weight::DECIMAL) as total_weight,
+        SUM(volume::DECIMAL) as total_volume
       FROM b2b_putaway
       WHERE reference = ${reference}
     `;
@@ -69,6 +71,7 @@ export async function GET(
         boxes: boxes || [],
         total_box: Number(total[0]?.total_box || 0),
         total_weight: Number(total[0]?.total_weight || 0),
+        total_volume: Number(total[0]?.total_volume || 0),
       },
     });
 

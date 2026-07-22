@@ -4,10 +4,6 @@ import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
 export const dynamic = 'force-dynamic';
 
 // 🔥 POST: Buat entri b2b_putaway secara MANUAL dari admin panel.
-// Beda dari /api/b2b/putaway/scan-box (yang mem-parse box_id hasil scan
-// barcode fisik) — di sini tidak ada barcode untuk di-parse, jadi
-// box_id/box_number dibuat otomatis, dan weight/volume diisi manual
-// (keduanya opsional).
 export async function POST(request: NextRequest) {
   try {
     const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -21,37 +17,47 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { reference, site, weight, volume } = body;
+    const { reference, box_id, box_number, weight, volume, site, store_name, address, city, province } = body;
 
-    if (!reference || !site) {
+    if (!reference) {
       return NextResponse.json(
-        { success: false, message: 'Reference dan Site wajib diisi' },
+        { success: false, message: 'Reference wajib diisi' },
         { status: 400 }
       );
     }
 
-    // 🔥 box_id dibuat otomatis (bukan hasil scan barcode fisik) — harus
-    // tetap unik karena kolom box_id di-cek unik di scan-box juga.
-    const boxId = `MANUAL-${reference}-${Date.now()}`;
-    // 🔥 Untuk manual create, box_number disamakan dengan reference
-    // (bukan slice dari box_id otomatis) — berat sudah diinput manual
-    // saat create jadi tidak perlu di-parse dari box_id.
-    // box_number dibatasi VARCHAR(14) di DB.
-    const boxNumber = String(reference).slice(0, 14);
+    // 🔥 Jika box_id tidak diisi, gunakan reference sebagai box_id
+    // 🔥 Jika box_number tidak diisi, gunakan reference sebagai box_number
+    const finalBoxId = (box_id && box_id.trim() !== '') ? box_id.trim() : reference;
+    const finalBoxNumber = (box_number && box_number.trim() !== '') ? box_number.trim() : reference;
 
     // 🔥 Ambil data store dari master_store berdasarkan site — kalau
-    // ketemu, address/store_name/city/province auto-fill. Kalau site
-    // belum terdaftar di master_store, biarkan kosong (null) supaya
-    // bisa diisi manual belakangan lewat "Edit Ship To".
-    // Case-insensitive karena site kini discan/diketik manual.
-    const cleanSite = String(site).trim();
-    const storeData = await sql`
-      SELECT store_name, address, city, province
-      FROM master_store
-      WHERE UPPER(site) = UPPER(${cleanSite}) AND is_active = true
-      LIMIT 1
-    `;
-    const store = storeData[0] || {};
+    // ketemu, address/store_name/city/province auto-fill.
+    const cleanSite = (site && site.trim() !== '') ? site.trim() : null;
+    let store = {};
+    if (cleanSite) {
+      const storeData = await sql`
+        SELECT store_name, address, city, province
+        FROM master_store
+        WHERE UPPER(site) = UPPER(${cleanSite}) AND is_active = true
+        LIMIT 1
+      `;
+      store = storeData[0] || {};
+    }
+
+    // 🔥 Gunakan nilai dari form jika ada, fallback ke store data, atau null
+    const finalStoreName = (store_name && store_name.trim() !== '') 
+      ? store_name.trim() 
+      : (store as any).store_name || null;
+    const finalAddress = (address && address.trim() !== '') 
+      ? address.trim() 
+      : (store as any).address || null;
+    const finalCity = (city && city.trim() !== '') 
+      ? city.trim() 
+      : (store as any).city || null;
+    const finalProvince = (province && province.trim() !== '') 
+      ? province.trim() 
+      : (store as any).province || null;
 
     const result = await sql`
       INSERT INTO b2b_putaway (
@@ -69,15 +75,15 @@ export async function POST(request: NextRequest) {
         loading_status
       ) VALUES (
         ${reference},
-        ${boxId},
-        ${boxNumber},
+        ${finalBoxId},
+        ${finalBoxNumber},
         ${weight || null},
         ${volume || null},
         ${cleanSite},
-        ${store.store_name || null},
-        ${store.address || null},
-        ${store.city || null},
-        ${store.province || null},
+        ${finalStoreName},
+        ${finalAddress},
+        ${finalCity},
+        ${finalProvince},
         ${userSession.sub}::UUID,
         'staging'
       )
@@ -86,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: '✅ Reference berhasil dibuat',
+      message: '✅ Box berhasil dibuat',
       data: result[0],
     }, { status: 201 });
 
