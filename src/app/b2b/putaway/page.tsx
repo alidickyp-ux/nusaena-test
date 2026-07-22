@@ -192,10 +192,10 @@ export default function B2BPutawayPage() {
         // Add to list with full data
         setBoxes(prev => [...prev, result.data]);
         setTotalBox(result.total_box);
-        // 🔥 Reset box id & location untuk box berikutnya, site tetap
-        // (biasanya beberapa box berturut-turut menuju site yang sama)
+        // 🔥 Reset box id saja untuk box berikutnya — site & location tetap
+        // (sekarang location sticky sama seperti site, sampai operator
+        // reset atau pilih ulang lokasi secara manual)
         setBoxId("");
-        setStagingLocation("");
         
         setStatusMsg({ 
           text: `✅ Box ${cleanBoxId} berhasil discan (${result.total_box} total)`, 
@@ -441,7 +441,13 @@ export default function B2BPutawayPage() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && selectedSite.trim()) {
                   e.preventDefault();
-                  inputRef.current?.focus();
+                  // 🔥 Kalau location sudah pernah dipilih (sticky dari box
+                  // sebelumnya), langsung lompat ke box id. Kalau belum, ke location dulu.
+                  if (stagingLocation) {
+                    inputRef.current?.focus();
+                  } else {
+                    locationSelectRef.current?.focus();
+                  }
                 }
               }}
               className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 font-mono text-lg font-semibold focus:outline-none focus:border-blue-500 disabled:opacity-50 uppercase"
@@ -473,45 +479,20 @@ export default function B2BPutawayPage() {
 
           <div>
             <label className="block text-stone-500 font-bold uppercase text-xs tracking-widest">
-              2. Scan Box ID
-            </label>
-            <input
-              ref={inputRef}
-              type="text"
-              disabled={loading}
-              placeholder="Scan box ID..."
-              value={boxId}
-              onChange={(e) => setBoxId(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && boxId.trim()) {
-                  e.preventDefault();
-                  if (!selectedSite.trim()) {
-                    showToast.error("Scan site terlebih dahulu");
-                    siteInputRef.current?.focus();
-                    return;
-                  }
-                  // 🔥 Box id belum langsung disimpan — lanjut ke pilih location dulu
-                  locationSelectRef.current?.focus();
-                }
-              }}
-              className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 font-mono text-lg font-semibold focus:outline-none focus:border-blue-500 disabled:opacity-50"
-            />
-          </div>
-
-          <div>
-            <label className="block text-stone-500 font-bold uppercase text-xs tracking-widest">
-              3. Pilih Location
+              2. Pilih Location
             </label>
             <select
               ref={locationSelectRef}
               value={stagingLocation}
               disabled={loading}
               onChange={(e) => {
-                const value = e.target.value;
-                setStagingLocation(value);
-                if (value && boxId.trim() && selectedSite.trim()) {
-                  // 🔥 Auto simpan begitu location dipilih — ini langkah terakhir
-                  handleScanBox(value);
+                // 🔥 Location sekarang sticky sama seperti site — dipilih sekali,
+                // tetap dipakai untuk box-box berikutnya sampai direset atau
+                // dipilih ulang manual. Tidak lagi auto-simpan di sini karena
+                // urutannya sekarang: site -> location -> scan box id.
+                setStagingLocation(e.target.value);
+                if (e.target.value) {
+                  inputRef.current?.focus();
                 }
               }}
               className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 text-sm focus:outline-none focus:border-blue-500"
@@ -521,6 +502,38 @@ export default function B2BPutawayPage() {
                 <option key={loc} value={loc}>{loc}</option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-stone-500 font-bold uppercase text-xs tracking-widest">
+              3. Scan Box ID
+            </label>
+            <input
+              ref={inputRef}
+              type="text"
+              disabled={loading}
+              placeholder="Scan box ID..."
+              value={boxId}
+              onChange={(e) => setBoxId(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && boxId.trim() && !loading) {
+                  e.preventDefault();
+                  if (!selectedSite.trim()) {
+                    showToast.error("Scan site terlebih dahulu");
+                    siteInputRef.current?.focus();
+                    return;
+                  }
+                  if (!stagingLocation) {
+                    showToast.error("Pilih location terlebih dahulu");
+                    locationSelectRef.current?.focus();
+                    return;
+                  }
+                  // 🔥 Site & location sudah siap duluan — scan box id langsung simpan
+                  handleScanBox();
+                }
+              }}
+              className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 font-mono text-lg font-semibold focus:outline-none focus:border-blue-500 disabled:opacity-50"
+            />
           </div>
 
           <button

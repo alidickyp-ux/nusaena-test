@@ -31,13 +31,21 @@ export async function POST(request: NextRequest) {
       SELECT 
         id,
         reference,
+        box_id,
+        box_number,
+        weight,
         site,
         staging_location,
+        store_name,
+        address,
+        city,
+        province,
         loading_status,
+        putaway_at,
         COUNT(*) OVER() as total_box
       FROM b2b_putaway
       WHERE reference = ${reference}
-      ORDER BY created_at DESC
+      ORDER BY created_at ASC
     `;
 
     return NextResponse.json({
