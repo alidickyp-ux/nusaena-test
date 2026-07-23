@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { reference, box_id, box_number, weight, volume, site, store_name, address, city, province } = body;
+    const { reference, box_id, box_number, weight, volume, site, store_name, address, city, province, brand } = body;
 
     if (!reference) {
       return NextResponse.json(
@@ -29,7 +29,10 @@ export async function POST(request: NextRequest) {
     // 🔥 Jika box_id tidak diisi, gunakan reference sebagai box_id
     // 🔥 Jika box_number tidak diisi, gunakan reference sebagai box_number
     const finalBoxId = (box_id && box_id.trim() !== '') ? box_id.trim() : reference;
-    const finalBoxNumber = (box_number && box_number.trim() !== '') ? box_number.trim() : reference;
+    // 🔥 Kolom box_number di DB sekarang VARCHAR(50) (disamakan dengan
+    // lebar kolom reference). Tetap dipotong sebagai jaring pengaman kalau
+    // suatu saat ada input yang lebih panjang dari itu.
+    const finalBoxNumber = ((box_number && box_number.trim() !== '') ? box_number.trim() : reference).slice(0, 50);
 
     // 🔥 Ambil data store dari master_store berdasarkan site — kalau
     // ketemu, address/store_name/city/province auto-fill.
@@ -59,6 +62,8 @@ export async function POST(request: NextRequest) {
       ? province.trim() 
       : (store as any).province || null;
 
+    const finalBrand = (brand && brand.trim() !== '') ? brand.trim() : null;
+
     const result = await sql`
       INSERT INTO b2b_putaway (
         reference,
@@ -71,6 +76,7 @@ export async function POST(request: NextRequest) {
         address,
         city,
         province,
+        brand,
         putaway_by,
         loading_status
       ) VALUES (
@@ -84,10 +90,11 @@ export async function POST(request: NextRequest) {
         ${finalAddress},
         ${finalCity},
         ${finalProvince},
+        ${finalBrand},
         ${userSession.sub}::UUID,
         'staging'
       )
-      RETURNING id, reference, box_id, box_number, weight, volume, site, store_name, address, city, province, loading_status
+      RETURNING id, reference, box_id, box_number, weight, volume, site, store_name, address, city, province, brand, loading_status
     `;
 
     return NextResponse.json({

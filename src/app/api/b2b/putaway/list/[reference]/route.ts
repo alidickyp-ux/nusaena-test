@@ -23,7 +23,8 @@ export async function GET(
 
     const reference = decodeURIComponent(params.reference);
 
-    // 🔥 JOIN dengan master_store untuk ambil brand
+    // 🔥 brand sekarang kolom sendiri di b2b_putaway (diisi manual per box),
+    // bukan lagi ditarik dari master_store — jadi JOIN-nya sudah tidak perlu.
     const boxes = await sql`
       SELECT 
         bp.id,
@@ -48,9 +49,8 @@ export async function GET(
         bp.putaway_at,
         bp.loading_at,
         bp.delivery_number,
-        ms."Brand" as brand
+        bp.brand
       FROM b2b_putaway bp
-      LEFT JOIN master_store ms ON ms.site = bp.site
       WHERE bp.reference = ${reference}
       ORDER BY bp.created_at ASC
     `;

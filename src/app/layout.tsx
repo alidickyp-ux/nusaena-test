@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ToastProvider } from "@/components/providers/ToastProvider";
+import { OrientationLock } from "@/components/providers/OrientationLock";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -18,6 +19,7 @@ export default function RootLayout({
   return (
     <html lang="id">
       <body className={inter.className}>
+        <OrientationLock />
         {children}
         <ToastProvider />
       </body>

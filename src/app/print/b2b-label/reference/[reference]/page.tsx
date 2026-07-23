@@ -72,10 +72,8 @@ export default function B2BLabelByReferencePage() {
       setBoxes(fetchedBoxes);
 
       // 🔥 total_volume dari API kadang kosong/0 walau box-nya punya nilai
-      // volume masing-masing (lihat contoh data: box.volume = "0.600" tapi
-      // total_volume API balikin 0). Jadi jangan cuma percaya total dari
-      // API — jumlahkan juga langsung dari boxes sebagai fallback, dan
-      // pakai yang lebih besar / yang ada datanya.
+      // volume masing-masing. Jumlahkan juga langsung dari boxes sebagai
+      // fallback, dan pakai yang lebih besar / yang ada datanya.
       const summedWeight = fetchedBoxes.reduce((sum, b) => sum + (parseFloat(b.weight) || 0), 0);
       const summedVolume = fetchedBoxes.reduce((sum, b) => sum + (parseFloat(b.volume || "0") || 0), 0);
 
@@ -100,8 +98,14 @@ export default function B2BLabelByReferencePage() {
       try {
         JsBarcode(barcodeRef.current, refNumber, {
           format: "CODE128",
-          width: 2.4,
-          height: 60,
+          // 🔥 Modul barcode dilebarkan supaya tiap batang cukup tebal untuk
+          // discan scanner genggam/thermal — sebelumnya svg di-stretch paksa
+          // via CSS width/height 100% tanpa jaga rasio, itu yang bikin
+          // proporsi antar-batang kacau dan gagal kebaca (lihat fix di CSS
+          // svg di bawah: sekarang cuma height yang dipatok, width ikut
+          // proporsional otomatis).
+          width: 3.4,
+          height: 90,
           displayValue: false,
           margin: 0,
           background: "#ffffff",
@@ -142,13 +146,17 @@ export default function B2BLabelByReferencePage() {
 
   const shipToLine = [firstBox.address, firstBox.city, firstBox.province].filter(Boolean).join(", ");
 
-  // 🔥 Label ukuran fisik 100mm x 60mm. 378px lebar ≈ 100mm (skala ~3.78px/mm),
-  // jadi padding 3mm ≈ 11px di kedua sisi.
-  const PAD = 11; // 3mm
+  // 🔥 Label ukuran fisik 100mm x 68mm (skala ~3.78px/mm).
+  // Margin kertas atas-bawah 0.2cm (2mm) ≈ 8px — beda dari padding kiri-kanan
+  // yang tetap 3mm ≈ 11px seperti sebelumnya (cuma atas-bawah yang diminta berubah).
+  const LABEL_W = 378; // 100mm
+  const LABEL_H = 257; // 68mm
+  const PAD_X = 11; // 3mm kiri-kanan
+  const PAD_Y = 8; // 2mm / 0.2cm atas-bawah
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-start">
-      <div className="w-[378px] mb-3 flex items-center justify-between no-print">
+      <div className="mb-3 flex items-center justify-between no-print" style={{ width: `${LABEL_W}px` }}>
         <Link href="/b2b/putaway" className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 font-bold uppercase tracking-wider transition-colors">
           <ArrowLeft className="w-3 h-3" /> Kembali
         </Link>
@@ -163,13 +171,13 @@ export default function B2BLabelByReferencePage() {
       <div
         id="print-area"
         style={{
-          width: "378px",
-          height: "226px",
+          width: `${LABEL_W}px`,
+          height: `${LABEL_H}px`,
           position: "relative",
           backgroundColor: "#ffffff",
           border: "1px solid #000000",
           boxSizing: "border-box",
-          padding: `${PAD}px`,
+          padding: `${PAD_Y}px ${PAD_X}px`,
           fontFamily: "Arial, 'Helvetica Neue', sans-serif",
           overflow: "hidden",
           color: INK,
@@ -256,7 +264,8 @@ export default function B2BLabelByReferencePage() {
           </div>
         </div>
 
-        {/* Sender / Ship To */}
+        {/* Sender / Ship To — dibagi 30:70 karena Sender isinya statis & pendek,
+            Ship To (alamat penerima) butuh ruang jauh lebih lebar */}
         <div
           style={{
             display: "flex",
@@ -266,20 +275,20 @@ export default function B2BLabelByReferencePage() {
             flexShrink: 0,
           }}
         >
-          <div style={{ flex: "1 1 0", minWidth: 0, borderRight: "1px solid #000000", paddingRight: "8px" }}>
+          <div style={{ flex: "0 0 30%", minWidth: 0, borderRight: "1px solid #000000", paddingRight: "8px" }}>
             <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: INK, letterSpacing: "0.3px", marginBottom: "2px" }}>
               SENDER
             </span>
-            <span style={{ display: "block", fontSize: "9.5px", fontWeight: 900, color: INK }}>
+            <span style={{ display: "block", fontSize: "9px", fontWeight: 900, color: INK }}>
               {SENDER.name}
             </span>
             <span
               style={{
                 display: "-webkit-box",
-                WebkitLineClamp: 2,
+                WebkitLineClamp: 4,
                 WebkitBoxOrient: "vertical",
                 overflow: "hidden",
-                fontSize: "8px",
+                fontSize: "7.5px",
                 fontWeight: 800,
                 color: INK,
                 lineHeight: "1.3",
@@ -288,7 +297,7 @@ export default function B2BLabelByReferencePage() {
             >
               {SENDER.address}
             </span>
-            <span style={{ display: "block", fontSize: "8px", fontWeight: 900, color: INK, marginTop: "3px" }}>
+            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: INK, marginTop: "3px" }}>
               Brand: {firstBox.brand || "-"}
             </span>
           </div>
@@ -303,13 +312,13 @@ export default function B2BLabelByReferencePage() {
             <span
               style={{
                 display: "-webkit-box",
-                WebkitLineClamp: 3,
+                WebkitLineClamp: 4,
                 WebkitBoxOrient: "vertical",
                 overflow: "hidden",
-                fontSize: "8px",
+                fontSize: "8.5px",
                 fontWeight: 800,
                 color: INK,
-                lineHeight: "1.3",
+                lineHeight: "1.35",
                 marginTop: "2px",
               }}
             >
@@ -328,9 +337,9 @@ export default function B2BLabelByReferencePage() {
           }}
         >
           <div style={{ flex: "0 0 33%" }}>
-            <span style={{ fontSize: "8px", fontWeight: 900, color: INK, marginRight: "3px" }}>QTY:</span>
+            <span style={{ fontSize: "8px", fontWeight: 900, color: INK, marginRight: "3px" }}>TOTAL PACKAGE:</span>
             <span style={{ fontSize: "16px", fontWeight: 900, color: INK }}>{totals.total_box}</span>
-            <span style={{ fontSize: "8px", color: INK, fontWeight: 900, marginLeft: "2px" }}>BOX</span>
+            <span style={{ fontSize: "8px", color: INK, fontWeight: 900, marginLeft: "2px" }}></span>
           </div>
           <div style={{ flex: "0 0 34%" }}>
             <span style={{ fontSize: "8px", fontWeight: 900, color: INK, marginRight: "3px" }}>WEIGHT:</span>
@@ -361,17 +370,18 @@ export default function B2BLabelByReferencePage() {
           </div>
         </div>
 
-        {/* Barcode */}
+        {/* Barcode — cuma height yang dipatok, width ikut proporsional (bukan
+            di-stretch paksa) supaya rasio antar-batang tetap benar dan bisa discan */}
         <div
           style={{
             flex: "1 1 0",
             minHeight: 0,
             display: "flex",
-            alignItems: "left",
+            alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <svg ref={barcodeRef} style={{ width: "100%", height: "100%" }} />
+          <svg ref={barcodeRef} style={{ height: "100%", width: "auto", maxWidth: "100%" }} />
         </div>
       </div>
 
@@ -396,7 +406,7 @@ export default function B2BLabelByReferencePage() {
             left: 0 !important;
             top: 0 !important;
             width: 378px !important;
-            height: 226px !important;
+            height: 257px !important;
             border: 1px solid #000000 !important;
             box-sizing: border-box !important;
           }
@@ -405,7 +415,7 @@ export default function B2BLabelByReferencePage() {
           }
         }
         @page {
-          size: 100mm 60mm;
+          size: 100mm 68mm;
           margin: 0;
         }
       `}</style>

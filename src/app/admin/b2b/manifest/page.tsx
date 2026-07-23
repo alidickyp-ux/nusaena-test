@@ -561,6 +561,7 @@ export default function B2BManifestListPage() {
   box_number: '',
   weight: '',
   volume: '',
+  brand: '',
   site: '',
   store_name: '',
   address: '',
@@ -703,6 +704,7 @@ export default function B2BManifestListPage() {
         box_number: '', // Add this line
         weight: '', 
         volume: '', 
+        brand: '',
         site: '', 
         store_name: '', 
         address: '', 
@@ -1434,6 +1436,22 @@ export default function B2BManifestListPage() {
           </div>
         </div>
 
+        {/* 🔥 TAMBAHKAN FIELD BRAND DI SINI */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+            Brand
+          </label>
+          <input
+            type="text"
+            value={createForm.brand}
+            onChange={(e) => setCreateForm({ ...createForm, brand: e.target.value })}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+            placeholder="BODYPAK / EXPORT"
+          />
+          <p className="text-[10px] text-slate-400 mt-1">
+            Brand/merek produk (opsional)
+          </p>
+        </div>
         <div className="flex gap-3 pt-2 border-t border-slate-200">
           <button
             onClick={() => setIsCreateModalOpen(false)}

@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const weight = weightMatch ? weightMatch[1] : null;
 
     const boxNumberMatch = box_id.match(/(BOX-?\d+)(?=[-#][\d.]+$)/i);
-    const boxNumber = boxNumberMatch ? boxNumberMatch[1] : box_id.slice(0, 14);
+    const boxNumber = boxNumberMatch ? boxNumberMatch[1] : box_id.slice(0, 50);
 
     // 🔥 Cek apakah box_id sudah ada
     const existingBox = await sql`
