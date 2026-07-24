@@ -1,5 +1,8 @@
 "use client";
 
+// src/app/admin/users/page.tsx
+"use client";
+
 import { useEffect, useState } from "react";
 import { 
   Plus, 
@@ -15,7 +18,9 @@ import {
   XCircle,
   RefreshCw
 } from "lucide-react";
-import { showToast, withToast } from "@/lib/toast";
+import showToast, { withToast } from '@/lib/toast';  // ✅ Import keduanya
+
+// ... rest of your code
 
 interface User {
   id: string;

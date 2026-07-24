@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import OperatorShell from "@/components/mobile/OperatorShell";
 import { playAcceptedSound, playRejectedSound } from "@/lib/sound";
-import { showToast } from "@/lib/toast";
+import showToast, { withToast } from '@/lib/toast';
 
 interface ActiveSession {
   id: string;

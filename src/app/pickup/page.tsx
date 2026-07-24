@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { showToast } from "@/lib/toast";
+import showToast, { withToast } from '@/lib/toast';
 import { playAcceptedSound, playRejectedSound } from "@/lib/sound";
 import OperatorShell from "@/components/mobile/OperatorShell";
 

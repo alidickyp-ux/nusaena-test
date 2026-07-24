@@ -1,3 +1,4 @@
+// next.config.js
 /** @type {import('next').NextConfig} */
 const withPWA = require('next-pwa')({
   dest: 'public',
@@ -8,10 +9,9 @@ const withPWA = require('next-pwa')({
     document: '/_offline',
   },
   runtimeCaching: [
-    // 🔥 FIX UTAMA PWA CACHE: Menggunakan regex yang mencakup root URL internal server Anda
     {
       urlPattern: /\/api\/.*$/,
-      handler: 'NetworkOnly', // Mutlak tembak ke server, dilarang simpan/baca cache HP
+      handler: 'NetworkOnly',
       options: {
         backgroundSync: {
           name: 'api-sync',
@@ -21,7 +21,6 @@ const withPWA = require('next-pwa')({
         },
       },
     },
-    // Asset gambar/icon — aman di-cache lama untuk offline
     {
       urlPattern: /^https?.*\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/,
       handler: 'CacheFirst',
@@ -33,7 +32,6 @@ const withPWA = require('next-pwa')({
         },
       },
     },
-    // JS/CSS build assets
     {
       urlPattern: /^https?.*\.(?:js|css)$/,
       handler: 'StaleWhileRevalidate',
@@ -41,7 +39,6 @@ const withPWA = require('next-pwa')({
         cacheName: 'static-resources',
       },
     },
-    // Sisanya — NetworkFirst
     {
       urlPattern: /^https?.*/,
       handler: 'NetworkFirst',

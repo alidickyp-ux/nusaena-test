@@ -1,4 +1,5 @@
-import { toast } from "sonner";
+// src/lib/toast.ts
+import { toast as sonnerToast } from "sonner";
 
 // Type definitions
 type ToastType = "success" | "error" | "warning" | "info" | "loading";
@@ -17,9 +18,9 @@ interface ToastOptions {
 }
 
 // Custom toast functions
-export const showToast = {
+export const toast = {
   success: (message: string, options?: ToastOptions) => {
-    return toast.success(message, {
+    return sonnerToast.success(message, {
       duration: options?.duration || 4000,
       description: options?.description,
       action: options?.action,
@@ -29,7 +30,7 @@ export const showToast = {
   },
 
   error: (message: string, options?: ToastOptions) => {
-    return toast.error(message, {
+    return sonnerToast.error(message, {
       duration: options?.duration || 5000,
       description: options?.description,
       action: options?.action,
@@ -39,7 +40,7 @@ export const showToast = {
   },
 
   warning: (message: string, options?: ToastOptions) => {
-    return toast.warning(message, {
+    return sonnerToast.warning(message, {
       duration: options?.duration || 4000,
       description: options?.description,
       action: options?.action,
@@ -49,7 +50,7 @@ export const showToast = {
   },
 
   info: (message: string, options?: ToastOptions) => {
-    return toast.info(message, {
+    return sonnerToast.info(message, {
       duration: options?.duration || 3000,
       description: options?.description,
       action: options?.action,
@@ -59,7 +60,7 @@ export const showToast = {
   },
 
   loading: (message: string, options?: ToastOptions) => {
-    return toast.loading(message, {
+    return sonnerToast.loading(message, {
       duration: options?.duration || 6000,
       description: options?.description,
     });
@@ -74,7 +75,7 @@ export const showToast = {
     },
     options?: ToastOptions
   ) => {
-    return toast.promise(promise, {
+    return sonnerToast.promise(promise, {
       loading: messages.loading,
       success: (data) => ({
         message: messages.success,
@@ -91,9 +92,9 @@ export const showToast = {
 
   dismiss: (id?: string | number) => {
     if (id) {
-      toast.dismiss(id);
+      sonnerToast.dismiss(id);
     } else {
-      toast.dismiss();
+      sonnerToast.dismiss();
     }
   },
 };
@@ -106,11 +107,11 @@ export const handleApiError = (error: any, defaultMessage?: string) => {
     defaultMessage ||
     "Terjadi kesalahan pada server";
 
-  showToast.error(message);
+  toast.error(message);
   return message;
 };
 
-// Helper untuk form submission - SIMPLIFIED version
+// Helper untuk form submission
 export const withToast = async (
   fn: () => Promise<any>,
   messages: {
@@ -120,10 +121,13 @@ export const withToast = async (
   }
 ): Promise<any | undefined> => {
   try {
-    const result = await showToast.promise(fn(), messages);
+    const result = await toast.promise(fn(), messages);
     return result;
   } catch (error) {
     handleApiError(error, messages.error);
     return undefined;
   }
 };
+
+// Default export untuk kompatibilitas
+export default toast;

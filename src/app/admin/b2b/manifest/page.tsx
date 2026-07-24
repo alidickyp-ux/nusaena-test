@@ -18,7 +18,7 @@ import {
   MapPin,
   Plus,
 } from "lucide-react";
-import { showToast } from "@/lib/toast";
+import showToast, { withToast } from '@/lib/toast';
 
 interface ManifestData {
   id: string;

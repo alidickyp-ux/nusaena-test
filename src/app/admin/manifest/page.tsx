@@ -11,7 +11,7 @@ import {
   Calendar,
   ChevronRight
 } from "lucide-react";
-import { showToast } from "@/lib/toast";
+import showToast, { withToast } from '@/lib/toast';
 
 interface Manifest {
   id: string;

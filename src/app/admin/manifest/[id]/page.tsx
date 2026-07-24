@@ -11,7 +11,7 @@ import {
   AlertCircle,
   Package
 } from "lucide-react";
-import { showToast } from "@/lib/toast";
+import showToast, { withToast } from '@/lib/toast';
 import ManifestPrint from "@/components/admin/ManifestPrint";
 
 interface ManifestData {

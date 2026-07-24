@@ -17,7 +17,7 @@ import {
   Box,
   XCircle
 } from "lucide-react";
-import { showToast } from "@/lib/toast";
+import showToast, { withToast } from '@/lib/toast';
 
 interface DashboardStats {
   total_sessions: number;

@@ -19,7 +19,7 @@ import {
   Zap,
   Package,
 } from "lucide-react";
-import { showToast } from "@/lib/toast";
+import showToast, { withToast } from '@/lib/toast';
 
 // =========================================================
 // Tipe data
