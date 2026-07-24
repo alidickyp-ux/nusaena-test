@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { showToast } from "@/lib/toast";
+import { toast } from '@/lib/toast';
 
 function redirectByRole(role: string, router: ReturnType<typeof useRouter>) {
   // Untuk ADMIN → dashboard admin
@@ -37,7 +37,7 @@ export default function LoginPage() {
         if (res.ok) {
           const { user } = await res.json();
           if (user) {
-            showToast.success(`Selamat datang kembali, ${user.full_name || user.username}!`);
+            toast.success(`Selamat datang kembali, ${user.full_name || user.username}!`);
             redirectByRole(user.role, router);
           }
         }
@@ -64,13 +64,13 @@ export default function LoginPage() {
       if (!res.ok) {
         const errorMessage = data.error || "Login gagal. Periksa username dan password Anda.";
         setError(errorMessage);
-        showToast.error(errorMessage);
+        toast.error(errorMessage);
         setLoading(false);
         return;
       }
 
       // Login sukses
-      showToast.success(`Selamat datang, ${data.user?.full_name || username}!`, {
+      toast.success(`Selamat datang, ${data.user?.full_name || username}!`, {
         description: "Anda berhasil masuk ke sistem",
       });
       
@@ -78,7 +78,7 @@ export default function LoginPage() {
     } catch (err) {
       const errorMessage = "Tidak bisa terhubung ke server. Periksa koneksi internet Anda.";
       setError(errorMessage);
-      showToast.error(errorMessage);
+      toast.error(errorMessage);
       setLoading(false);
     }
   };
