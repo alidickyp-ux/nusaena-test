@@ -38,9 +38,11 @@ export default function PickupPage() {
     }
 
     try {
-      const res = await fetch(`/api/pickup/search?q=${encodeURIComponent(query)}&mode=suggest`);
+      const res = await fetch(`/api/pickup/search?q=${encodeURIComponent(query)}&mode=suggest`, {
+        credentials: 'include', // 🔥 Tambahkan ini
+      });
       const result = await res.json();
-
+      
       if (res.ok && result.success && result.mode === 'suggest') {
         setSuggestions(result.data || []);
       } else {
@@ -88,7 +90,9 @@ export default function PickupPage() {
     setStatusMsg({ text: "🔍 Mencari...", type: "info" });
 
     try {
-      const res = await fetch(`/api/pickup/search?q=${encodeURIComponent(cleanQuery)}&mode=search`);
+      const res = await fetch(`/api/pickup/search?q=${encodeURIComponent(cleanQuery)}&mode=search`, {
+        credentials: 'include', // 🔥 Tambahkan ini
+      });
       const result = await res.json();
 
       if (res.ok && result.success && result.mode === 'search') {
@@ -156,6 +160,7 @@ export default function PickupPage() {
         body: JSON.stringify({
           barcode: selectedPackage.barcode_resi,
         }),
+        credentials: 'include',
       });
 
       const result = await res.json();
