@@ -5,20 +5,25 @@ import { Toaster } from "sonner";
 export function ToastProvider() {
   return (
     <Toaster
-      position="top-right"
+      position="top-center"
       expand={false}
       richColors
       closeButton
+      visibleToasts={5}
       toastOptions={{
+        duration: 4000,
+        className: "font-sans !rounded-2xl !shadow-xl",
         style: {
           background: "#ffffff",
-          border: "1px solid #e2e8f0",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-          borderRadius: "12px",
-          padding: "16px",
+          border: "none",
+          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.15)",
+          borderRadius: "16px",
+          padding: "18px 24px",
+          fontWeight: 500,
+          // Gradient border effect
+          borderLeft: "6px solid",
+          borderImage: "linear-gradient(135deg, #6366f1, #8b5cf6, #d946ef) 1",
         },
-        duration: 4000,
-        className: "font-sans",
       }}
     />
   );

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { formatWIB } from '@/lib/date';
 import showToast, { withToast } from '@/lib/toast';
 import { playAcceptedSound, playRejectedSound } from "@/lib/sound";
 import OperatorShell from "@/components/mobile/OperatorShell";
@@ -98,10 +99,9 @@ export default function PickupPage() {
       if (res.ok && result.success && result.mode === 'search') {
         const pkg = result.data;
         
-        // Cek apakah sudah di-pickup
         if (pkg.status === 'PICKED' || pkg.status === 'COMPLETED') {
           setStatusMsg({ 
-            text: `⚠️ Paket sudah diambil pada ${new Date(pkg.picked_at).toLocaleString('id-ID')}`, 
+            text: `⚠️ Paket sudah diambil pada ${formatWIB(pkg.picked_at)}`, 
             type: "error" 
           });
           playRejectedSound();
