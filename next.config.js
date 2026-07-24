@@ -1,4 +1,6 @@
 // next.config.js
+const path = require('path'); // ← Tambahkan ini di awal
+
 /** @type {import('next').NextConfig} */
 const withPWA = require('next-pwa')({
   dest: 'public',
@@ -65,6 +67,12 @@ const nextConfig = {
   },
   env: {
     DATABASE_URL: process.env.DATABASE_URL || '',
+  },
+  // 🔥 TAMBAHKAN INI
+  webpack: (config, { isServer }) => {
+    // Pastikan alias @ mengarah ke src
+    config.resolve.alias['@'] = path.resolve(__dirname, 'src');
+    return config;
   },
 };
 

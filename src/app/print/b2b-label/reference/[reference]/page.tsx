@@ -104,10 +104,10 @@ export default function B2BLabelByReferencePage() {
           // proporsi antar-batang kacau dan gagal kebaca (lihat fix di CSS
           // svg di bawah: sekarang cuma height yang dipatok, width ikut
           // proporsional otomatis).
-          width: 3.4,
-          height: 90,
+          width: 5.0,
+          height: 100,
           displayValue: false,
-          margin: 0,
+          margin: 12,
           background: "#ffffff",
         });
       } catch (e) {
@@ -381,7 +381,7 @@ export default function B2BLabelByReferencePage() {
             justifyContent: "center",
           }}
         >
-          <svg ref={barcodeRef} style={{ height: "100%", width: "auto", maxWidth: "100%" }} />
+          <svg ref={barcodeRef} style={{ height: "100%", width: "90%", maxWidth: "100%" }} />
         </div>
       </div>
 

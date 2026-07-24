@@ -129,5 +129,6 @@ export const withToast = async (
   }
 };
 
-// Default export untuk kompatibilitas
-export default toast;
+// Default export dengan nama showToast
+const showToast = toast;
+export default showToast;
