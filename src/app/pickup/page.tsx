@@ -100,13 +100,13 @@ export default function PickupPage() {
         const pkg = result.data;
         
         if (pkg.status === 'PICKED' || pkg.status === 'COMPLETED') {
-          setStatusMsg({ 
-            text: `⚠️ Paket sudah diambil pada ${formatWIB(pkg.picked_at)}`, 
-            type: "error" 
-          });
-          playRejectedSound();
-          return;
-        }
+            setStatusMsg({ 
+              text: `⚠️ Paket sudah diambil pada ${formatWIB(pkg.picked_at)}`, 
+              type: "error" 
+            });
+            playRejectedSound();
+            return;
+          }
 
         setSelectedPackage(pkg);
         setStep("detail");
