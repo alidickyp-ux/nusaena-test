@@ -31,26 +31,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 🔥 Cari box_id di salah satu reference yang sedang dipilih
-    let matchedRow: any = null;
-    for (const ref of references) {
-      const boxCheck = await sql`
-        SELECT 
-          id,
-          reference,
-          box_id,
-          loading_status,
-          vendor_name
-        FROM b2b_putaway
-        WHERE box_id = ${box_id}
-          AND reference = ${ref}
-          AND (vendor_name IS NULL OR vendor_name = ${vendor_name})
-      `;
-      if (boxCheck.length > 0) {
-        matchedRow = boxCheck[0];
-        break;
-      }
-    }
+    // 🔥 Cari box_id di salah satu reference yang sedang dipilih — SATU query pakai
+    // reference = ANY(...) menggantikan loop per-reference. box_id unik di seluruh
+    // tabel (dijaga di endpoint scan), jadi cukup 1 row yang match; tetap urutkan
+    // sesuai posisi reference di array supaya perilaku "reference pertama yang cocok
+    // yang dipakai" persis sama seperti versi loop.
+    const boxMatches = await sql`
+      SELECT 
+        id,
+        reference,
+        box_id,
+        loading_status,
+        vendor_name
+      FROM b2b_putaway
+      WHERE box_id = ${box_id}
+        AND reference = ANY(${references})
+        AND (vendor_name IS NULL OR vendor_name = ${vendor_name})
+    `;
+
+    const matchedRow = references
+      .map((ref) => boxMatches.find((row: any) => row.reference === ref))
+      .find((row: any) => row !== undefined) || null;
 
     if (!matchedRow) {
       return NextResponse.json(
@@ -79,14 +80,28 @@ export async function POST(request: NextRequest) {
       WHERE id = ${matchedRow.id}
     `;
 
-    // 🔥 Hitung sisa box staging untuk reference yang box ini berasal darinya
-    const remainingForRef = await sql`
-      SELECT COUNT(*) as count
+    // 🔥 Hitung sisa box staging untuk SEMUA reference yang sedang dipilih bareng
+    // sekaligus (matchedReference sudah pasti termasuk di `references`) — SATU query
+    // GROUP BY menggantikan 2 query terpisah (remainingForRef + loop batchRemaining)
+    const remainingByRef = await sql`
+      SELECT reference, COUNT(*) as count
       FROM b2b_putaway
-      WHERE reference = ${matchedReference}
+      WHERE reference = ANY(${references})
         AND loading_status = 'staging'
+      GROUP BY reference
     `;
-    const refDone = Number(remainingForRef[0].count) === 0;
+
+    const remainingMap = new Map<string, number>(
+      remainingByRef.map((r: any) => [r.reference, Number(r.count)])
+    );
+
+    const remainingForRefCount = remainingMap.get(matchedReference) || 0;
+    const refDone = remainingForRefCount === 0;
+
+    const batchRemaining = references.reduce(
+      (sum, ref) => sum + (remainingMap.get(ref) || 0),
+      0
+    );
 
     // 🔥 Kalau reference ini sudah selesai semua, samakan vendor_name di sisa baris (kalau ada yang masih NULL)
     if (refDone) {
@@ -96,18 +111,6 @@ export async function POST(request: NextRequest) {
         WHERE reference = ${matchedReference}
           AND vendor_name IS NULL
       `;
-    }
-
-    // 🔥 Hitung sisa box staging untuk SEMUA reference yang sedang dipilih bareng (batch)
-    let batchRemaining = 0;
-    for (const ref of references) {
-      const r = await sql`
-        SELECT COUNT(*) as count
-        FROM b2b_putaway
-        WHERE reference = ${ref}
-          AND loading_status = 'staging'
-      `;
-      batchRemaining += Number(r[0].count);
     }
 
     return NextResponse.json({

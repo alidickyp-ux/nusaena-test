@@ -32,11 +32,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Cek session
-    const sessionCheck = await sql`
-      SELECT id, status FROM sorting_sessions 
-      WHERE id = ${session_id}::UUID
-    `;
+    // 🔥 sessionCheck & barcodeCheck enggak saling bergantung → jalankan paralel
+    // (1 round-trip "wall time" alih-alih 2 berurutan)
+    const [sessionCheck, barcodeCheck] = await Promise.all([
+      sql`SELECT id, status FROM sorting_sessions WHERE id = ${session_id}::UUID`,
+      sql`
+        SELECT id, is_validated_handover 
+        FROM sorting_details 
+        WHERE session_id = ${session_id}::UUID 
+          AND barcode_resi = ${barcode}
+      `,
+    ]);
 
     if (sessionCheck.length === 0) {
       return NextResponse.json(
@@ -52,14 +58,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Cek barcode di session ini
-    const barcodeCheck = await sql`
-      SELECT id, is_validated_handover 
-      FROM sorting_details 
-      WHERE session_id = ${session_id}::UUID 
-        AND barcode_resi = ${barcode}
-    `;
-
     if (barcodeCheck.length === 0) {
       return NextResponse.json(
         { success: false, message: 'Barcode tidak ditemukan di session ini' },
@@ -74,18 +72,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update status jadi validated
-    await sql`
-      UPDATE sorting_details 
-      SET 
-        is_validated_handover = true,
-        validated_by = ${session.sub}::UUID,
-        validated_at = NOW()
-      WHERE id = ${barcodeCheck[0].id}
-    `;
-
-    // Hitung sisa
-    const remaining = await sql`
+    // 🔥 UPDATE + hitung sisa digabung jadi SATU statement lewat CTE, jadi cuma
+    // 1 round-trip menggantikan 2 query terpisah (UPDATE lalu SELECT COUNT)
+    const result = await sql`
+      WITH updated AS (
+        UPDATE sorting_details 
+        SET 
+          is_validated_handover = true,
+          validated_by = ${session.sub}::UUID,
+          validated_at = NOW()
+        WHERE id = ${barcodeCheck[0].id}
+        RETURNING id
+      )
       SELECT COUNT(*) as count 
       FROM sorting_details 
       WHERE session_id = ${session_id}::UUID 
@@ -96,7 +94,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: '✅ Barcode berhasil diverifikasi',
       barcode: barcode,
-      remaining: remaining[0].count,
+      remaining: result[0].count,
     });
 
   } catch (error) {
