@@ -52,7 +52,14 @@ export default function B2BPutawayPage() {
   // Data
   const [sites, setSites] = useState<SiteData[]>([]);
   const [boxes, setBoxes] = useState<BoxData[]>([]);
-  const [totalBox, setTotalBox] = useState(0);
+  // 🔥 totalBox dihapus sebagai state terpisah — dulu di-set langsung dari
+  // result.total_box (server), yang bisa "kelewat" / out-of-order kalau ada
+  // 2 scan nyaris bersamaan (misal double-tap / scanner trigger dobel):
+  // response yang datang belakangan bisa nimpa angka yang lebih baru dengan
+  // angka yang lebih lama. boxes.length selalu konsisten karena di-update
+  // pakai functional setState (append), jadi total box sekarang DITURUNKAN
+  // dari situ, bukan dipercaya dari server.
+  const totalBox = boxes.length;
   const [isNewReference, setIsNewReference] = useState(true);
   
   // Status
@@ -123,12 +130,13 @@ export default function B2BPutawayPage() {
         const data = result.data;
         setIsNewReference(data.is_new);
         setBoxes(data.boxes || []);
-        setTotalBox(data.total_box || 0);
+        // 🔥 total box sekarang otomatis ikut panjang (data.boxes || []) di atas,
+        // enggak perlu di-set terpisah dari data.total_box
         
         if (data.is_new) {
           setStatusMsg({ text: `🆕 Reference baru: ${cleanRef}`, type: "success" });
         } else {
-          setStatusMsg({ text: `📦 Reference: ${cleanRef} (${data.total_box} box)`, type: "info" });
+          setStatusMsg({ text: `📦 Reference: ${cleanRef} (${(data.boxes || []).length} box)`, type: "info" });
         }
         
         setStep("box");
@@ -152,6 +160,12 @@ export default function B2BPutawayPage() {
   // dropdown — di titik itu state `stagingLocation` belum ter-update (closure
   // masih lihat nilai lama), jadi nilai yang baru dipilih dikirim langsung.
   const handleScanBox = async (locationOverride?: string) => {
+    // 🔥 Guard tambahan: cegah double-submit kalau request sebelumnya masih
+    // jalan (misal Enter ditekan 2x cepat, atau scanner fisik trigger dobel).
+    // Tanpa ini, 2 request bisa nyaris bersamaan dan responsnya bisa datang
+    // enggak sesuai urutan kirim.
+    if (loading) return;
+
     const cleanBoxId = boxId.trim();
     const locationToUse = locationOverride ?? stagingLocation;
 
@@ -189,16 +203,18 @@ export default function B2BPutawayPage() {
         playAcceptedSound();
         showToast.success(result.message);
         
-        // Add to list with full data
+        // 🔥 Functional update — selalu nambah ke array yang paling baru,
+        // enggak peduli urutan respons datang. Total box (di header) ikut
+        // otomatis lewat `boxes.length`, jadi enggak ada lagi 2 sumber
+        // angka yang bisa saling timpa.
         setBoxes(prev => [...prev, result.data]);
-        setTotalBox(result.total_box);
         // 🔥 Reset box id saja untuk box berikutnya — site & location tetap
         // (sekarang location sticky sama seperti site, sampai operator
         // reset atau pilih ulang lokasi secara manual)
         setBoxId("");
         
         setStatusMsg({ 
-          text: `✅ Box ${cleanBoxId} berhasil discan (${result.total_box} total)`, 
+          text: `✅ Box ${cleanBoxId} berhasil discan`, 
           type: "success" 
         });
         
@@ -259,7 +275,7 @@ export default function B2BPutawayPage() {
           if (refreshRes.ok) {
             const data = await refreshRes.json();
             setBoxes(data.data.boxes || []);
-            setTotalBox(data.data.total_box || 0);
+            // 🔥 total box otomatis ikut panjang boxes di atas
           }
         } else {
           showToast.error(result.message || "Gagal update box");
@@ -295,7 +311,6 @@ export default function B2BPutawayPage() {
     setSelectedSite("");
     setStagingLocation("");
     setBoxes([]);
-    setTotalBox(0);
     setStatusMsg({ text: "", type: "" });
     setLoading(false);
     setEditingBoxId(null);
