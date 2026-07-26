@@ -53,7 +53,7 @@ const navItems: NavItem[] = [
   { name: 'Sorting', href: '/sorting', icon: <Package className="w-4 h-4" />, category: 'TOOLS' },
   { name: 'Handover', href: '/handover', icon: <FileText className="w-4 h-4" />, category: 'TOOLS' },
   { name: 'User Management', href: '/admin/users', icon: <Users className="w-4 h-4" />, category: 'ADMIN' },
-  { name: 'Master Ekspedisi', href: '/admin/master/transporter', icon: <Truck className="w-4 h-4" />, category: 'MASTER' },
+  { name: 'Master Ekspedisi', href: '/admin/master/ekspedisi', icon: <Truck className="w-4 h-4" />, category: 'MASTER' },
   { name: 'Master Store', href: '/admin/master/store', icon: <Store className="w-4 h-4" />, category: 'MASTER' },
 ];
 
