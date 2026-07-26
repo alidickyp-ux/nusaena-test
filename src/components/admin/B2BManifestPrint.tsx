@@ -93,10 +93,10 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
         {signature ? (
           <img src={signature} alt={`Tanda tangan ${label}`} className="max-h-20 object-contain" />
         ) : (
-          <span className="text-xs text-gray-300">Belum tanda tangan</span>
+          <span className="text-xs text-gray-300"></span>
         )}
       </div>
-      <p className="text-sm font-semibold text-gray-800">{name || "-"}</p>
+      <p className="text-sm font-semibold text-gray-800">{name || ""}</p>
     </div>
   );
 
@@ -295,7 +295,7 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
                   Tanda Tangan
                 </p>
-                <div className="grid grid-cols-2 gap-4 max-w-md mx-auto mb-4">
+                <div className="grid grid-cols-3 gap-4 max-w-2xl mx-auto mb-4">
                   <SignatureCard
                     label="Driver"
                     name={headerInfo?.driver || null}
@@ -306,6 +306,10 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
                     name={headerInfo?.security || null}
                     signature={headerInfo?.security_sign || null}
                   />
+                  {/* 🔥 PIC / Supervisor — kosong sepenuhnya, diisi manual tulis
+                      tangan di kertas. Beda dari Driver & Security yang auto-fill
+                      dari database, kartu ini enggak ambil data apapun. */}
+                  <SignatureCard label="PIC / Supervisor" name={null} signature={null} />
                 </div>
 
                 {/* Catatan */}

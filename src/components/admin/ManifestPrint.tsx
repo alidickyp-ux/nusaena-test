@@ -57,10 +57,12 @@ export default function ManifestPrint({ manifest, historyLogs }: ManifestPrintPr
     label,
     name,
     signature,
+    showDate = true,
   }: {
     label: string;
     name: string;
     signature: string | null;
+    showDate?: boolean;
   }) => (
     <div className="border border-gray-200 rounded-lg p-3 text-center">
       <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">{label}</p>
@@ -68,11 +70,11 @@ export default function ManifestPrint({ manifest, historyLogs }: ManifestPrintPr
         {signature ? (
           <img src={signature} alt={`Tanda tangan ${label}`} className="max-h-20 object-contain" />
         ) : (
-          <span className="text-xs text-gray-300">Belum tanda tangan</span>
+          <span className="text-xs text-gray-300"></span>
         )}
       </div>
       <p className="text-sm font-semibold text-gray-800">{name}</p>
-      <p className="text-xs text-blue-600">{tanggalDibuat}</p>
+      {showDate && <p className="text-xs text-blue-600">{tanggalDibuat}</p>}
     </div>
   );
 
@@ -237,16 +239,21 @@ export default function ManifestPrint({ manifest, historyLogs }: ManifestPrintPr
               })}
             </div>
 
-            {/* Footer - Tanda Tangan (Kurir & Security saja), hanya di halaman terakhir, selalu mepet bawah halaman */}
+            {/* Footer - Tanda Tangan (Kurir, Security & PIC/Supervisor), hanya di halaman terakhir, selalu mepet bawah halaman */}
             {isLastPage && (
               <div className="mt-auto pt-4">
                 <div className="border-b-2 border-gray-800 mb-4"></div>
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
                   Tanda Tangan
                 </p>
-                <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
+                <div className="grid grid-cols-3 gap-4 max-w-2xl mx-auto">
                   <SignatureCard label="Kurir" name={manifest.courier_name} signature={manifest.courier_signature} />
                   <SignatureCard label="Security" name={manifest.security_name} signature={manifest.security_signature} />
+                  {/* 🔥 PIC / Supervisor — kosong sepenuhnya, diisi manual tulis
+                      tangan di kertas. Enggak ambil data apapun dari manifest,
+                      dan tanggal juga disembunyikan (showDate=false) karena
+                      belum ada tanda tangan/tanggal yang sebenarnya terjadi. */}
+                  <SignatureCard label="PIC / Supervisor" name="" signature={null} showDate={false} />
                 </div>
                 <div className="border-t border-gray-200 mt-4 pt-2">
                   <p className="text-center text-xs text-gray-400">
