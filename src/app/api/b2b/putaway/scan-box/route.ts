@@ -40,10 +40,20 @@ export async function POST(request: NextRequest) {
     const boxNumberMatch = box_id.match(/(BOX-?\d+)(?=[-#][\d.]+$)/i);
     const boxNumber = boxNumberMatch ? boxNumberMatch[1] : box_id.slice(0, 50);
 
-    // 🔥 Cek apakah box_id sudah ada
-    const existingBox = await sql`
-      SELECT id FROM b2b_putaway WHERE box_id = ${box_id}
-    `;
+    const cleanSite = String(site).trim();
+
+    // 🔥 existingBox check & storeData lookup enggak saling bergantung,
+    // jadi dijalankan paralel (Promise.all) supaya cuma 1 round-trip "wall time"
+    // alih-alih 2 round-trip berurutan
+    const [existingBox, storeData] = await Promise.all([
+      sql`SELECT id FROM b2b_putaway WHERE box_id = ${box_id}`,
+      sql`
+        SELECT store_name, address, city, province
+        FROM master_store
+        WHERE UPPER(site) = UPPER(${cleanSite}) AND is_active = true
+        LIMIT 1
+      `,
+    ]);
 
     if (existingBox.length > 0) {
       return NextResponse.json(
@@ -52,19 +62,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 🔥 Ambil data store dari master_store — site sekarang discan/diketik manual,
-    // jadi pencocokan dibuat case-insensitive supaya tidak gagal cuma karena beda huruf besar/kecil
-    const cleanSite = String(site).trim();
-    const storeData = await sql`
-      SELECT store_name, address, city, province
-      FROM master_store
-      WHERE UPPER(site) = UPPER(${cleanSite}) AND is_active = true
-      LIMIT 1
-    `;
-
     const store = storeData[0] || {};
 
-    // 🔥 Insert ke b2b_putaway
+    // 🔥 Insert ke b2b_putaway sekaligus hitung total_box dalam reference yang sama
+    // lewat subquery di RETURNING, jadi enggak perlu query COUNT(*) terpisah setelahnya
     const result = await sql`
       INSERT INTO b2b_putaway (
         reference,
@@ -93,19 +94,19 @@ export async function POST(request: NextRequest) {
         ${userSession.sub}::UUID,
         'staging'
       )
-      RETURNING id, reference, box_id, box_number, weight, site, staging_location, loading_status
+      RETURNING
+        id, reference, box_id, box_number, weight, site, staging_location, loading_status,
+        (SELECT COUNT(*) FROM b2b_putaway WHERE reference = ${reference}) AS total_box
     `;
 
-    // 🔥 Hitung total box dalam reference
-    const totalBox = await sql`
-      SELECT COUNT(*) as count FROM b2b_putaway WHERE reference = ${reference}
-    `;
+    const row = result[0];
+    const { total_box, ...data } = row;
 
     return NextResponse.json({
       success: true,
       message: '✅ Box berhasil discan',
-      data: result[0],
-      total_box: Number(totalBox[0].count),
+      data,
+      total_box: Number(total_box),
     });
 
   } catch (error) {
