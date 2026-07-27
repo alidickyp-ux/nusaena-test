@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
+
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function POST(request: NextRequest) {
   try {
+    // 1. Validasi session
     const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
     if (!sessionToken) {
       return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
@@ -16,8 +18,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: 'Invalid session' }, { status: 401 });
     }
 
+    // 2. Parse body
     const body = await request.json();
-    const { 
+    const {
       vendor_name,
       references, // array of reference
       driver,
@@ -49,13 +52,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 🔥 Generate delivery number
-    // Format: DN23-YYMMDD-XXXX (4 digit random)
+    // 3. Generate delivery number (dengan retry jika duplikat)
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     let random = String(Math.floor(1000 + Math.random() * 9000));
     let deliveryNumber = `DN23-${dateStr}-${random}`;
 
-    // 🔥 Check duplicate delivery number
     let attempts = 0;
     while (attempts < 10) {
       const check = await sql`
@@ -67,26 +68,24 @@ export async function POST(request: NextRequest) {
       attempts++;
     }
 
-    // 🔥 Update semua putaway yang reference-nya di-loading
-    // Gunakan loop untuk update per reference (lebih aman dari SQL injection)
-    for (const ref of references) {
-      await sql`
-        UPDATE b2b_putaway
-        SET 
-          delivery_number = ${deliveryNumber},
-          driver = ${driver},
-          operator = ${operator},
-          security = ${security},
-          police_number = ${police_number},
-          driver_sign = ${driver_sign},
-          security_sign = ${security_sign}
-        WHERE vendor_name = ${vendor_name}
-          AND reference = ${ref}
-          AND loading_status = 'loading_complete'
-      `;
-    }
+    // 4. 🔥 UPDATE semua putaway sekaligus (1 query)
+    //    Gunakan ANY dengan array parameterized untuk keamanan.
+    await sql`
+      UPDATE b2b_putaway
+      SET 
+        delivery_number = ${deliveryNumber},
+        driver = ${driver},
+        operator = ${operator},
+        security = ${security},
+        police_number = ${police_number},
+        driver_sign = ${driver_sign},
+        security_sign = ${security_sign}
+      WHERE vendor_name = ${vendor_name}
+        AND reference = ANY(${references}::VARCHAR[])
+        AND loading_status = 'loading_complete'
+    `;
 
-    // 🔥 Hitung total box dan weight untuk vendor ini
+    // 5. Hitung total box dan weight
     const stats = await sql`
       SELECT 
         COUNT(*) as total_box,
@@ -96,8 +95,7 @@ export async function POST(request: NextRequest) {
         AND delivery_number = ${deliveryNumber}
     `;
 
-    // 🔥 Insert ke manifest_order (delivered_status TIDAK ADA di sini lagi —
-    // sudah pindah ke manifest_reference, per-reference)
+    // 6. Insert ke manifest_order
     const manifest = await sql`
       INSERT INTO manifest_order (
         delivery_number,
@@ -115,20 +113,16 @@ export async function POST(request: NextRequest) {
       RETURNING id, delivery_number, vendor_name, total_box, total_weight
     `;
 
-    // 🔥 Buat satu baris manifest_reference untuk TIAP reference dalam DN ini —
-    // tanpa ini, tab "References" di admin selalu kosong untuk DN baru,
-    // dan resi/arrive_date per-reference tidak ada tempat disimpan.
+    // 7. 🔥 Insert manifest_reference untuk SEMUA reference dalam 1 query (pakai unnest)
     const manifestId = manifest[0].id;
-    for (const ref of references) {
-      await sql`
-        INSERT INTO manifest_reference (
-          manifest_id, reference, delivered_status
-        ) VALUES (
-          ${manifestId}::UUID, ${ref}, 'on_shipping'
-        )
-        ON CONFLICT (manifest_id, reference) DO NOTHING
-      `;
-    }
+    await sql`
+      INSERT INTO manifest_reference (manifest_id, reference, delivered_status)
+      SELECT 
+        ${manifestId}::UUID, 
+        unnest(${references}::VARCHAR[]), 
+        'on_shipping'
+      ON CONFLICT (manifest_id, reference) DO NOTHING
+    `;
 
     return NextResponse.json({
       success: true,

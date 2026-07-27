@@ -39,6 +39,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 🔥 Cek session status
+    const sessionCheck = await sql`
+      SELECT status FROM sorting_sessions WHERE id = ${session_id}::UUID
+    `;
+    if (sessionCheck.length === 0) {
+      return NextResponse.json(
+        { success: false, message: 'Session tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+    if (sessionCheck[0].status === 'CLOSED') {
+      return NextResponse.json(
+        { success: false, message: 'Session sudah ditutup, tidak bisa diubah' },
+        { status: 400 }
+      );
+    }
+
+    // 🔥 (Opsional) Cek akses user – contoh: hanya admin atau user pembuat
+    // Misal ada kolom created_by di sorting_sessions:
+    // const accessCheck = await sql`
+    //   SELECT created_by FROM sorting_sessions WHERE id = ${session_id}::UUID
+    // `;
+    // if (accessCheck[0].created_by !== userSession.sub && userSession.role !== 'ADMIN') {
+    //   return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    // }
+
     // Cek barcode di session
     const existing = await sql`
       SELECT id, is_validated_handover, discrepancy_reason
@@ -64,7 +90,6 @@ export async function POST(request: NextRequest) {
       discrepancy_reason = null;
     }
 
-    // 🔥 Update database
     const updated = await sql`
       UPDATE sorting_details
       SET 

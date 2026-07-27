@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
+
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
@@ -81,234 +82,257 @@ export async function POST(request: NextRequest) {
     const sessionData = sessionCheck[0];
 
     // =============================================
-    // MODE TRUST: Semua paket langsung DONE
+    // Mulai transaksi manual
     // =============================================
-    if (mode === 'trust') {
-      // 1. Update semua sorting_details jadi validated
-      await sql`
-        UPDATE sorting_details
-        SET 
-          is_validated_handover = true,
-          validated_by = ${session.sub}::UUID,
-          validated_at = NOW(),
-          discrepancy_reason = NULL
-        WHERE session_id = ${session_id}::UUID
-      `;
+    await sql`BEGIN`;
 
-      // 2. Insert history logs - semua DONE
-      await sql`
-        INSERT INTO history_logs (
-          session_id,
-          session_code,
-          transporter_name,
-          resi_number,
-          sorting_at,
-          sorting_by,
-          handover_at,
-          handover_by,
-          status
-        )
-        SELECT 
-          ${session_id}::UUID,
-          ${sessionData.session_code},
-          ${sessionData.transporter_name},
-          sd.barcode_resi,
-          sd.scanned_at,
-          u.full_name,
-          NOW(),
-          ${courier_name},
-          'DONE'
-        FROM sorting_details sd
-        LEFT JOIN users u ON u.id = sd.sorting_by
-        WHERE sd.session_id = ${session_id}::UUID
-      `;
+    try {
+      let result;
 
-      // 3. Hitung total paket
-      const totalPackages = await sql`
-        SELECT COUNT(*) as count FROM sorting_details 
-        WHERE session_id = ${session_id}::UUID
-      `;
+      // =============================================
+      // MODE TRUST
+      // =============================================
+      if (mode === 'trust') {
+        // 1. Update semua sorting_details
+        await sql`
+          UPDATE sorting_details
+          SET 
+            is_validated_handover = true,
+            validated_by = ${session.sub}::UUID,
+            validated_at = NOW(),
+            discrepancy_reason = NULL
+          WHERE session_id = ${session_id}::UUID
+        `;
 
-      // 4. Insert manifest
-      await sql`
-        INSERT INTO handover_manifests (
-          session_id,
-          courier_name,
-          security_name,
-          vehicle_number,
-          courier_signature,
-          security_signature,
-          total_packages_handed,
-          total_discrepancy,
-          handover_by,
-          signed_at
-        ) VALUES (
-          ${session_id}::UUID,
-          ${courier_name},
-          ${security_name},
-          ${vehicle_number},
-          ${courier_signature},
-          ${security_signature},
-          ${totalPackages[0].count},
-          0,
-          ${session.sub}::UUID,
-          NOW()
-        )
-      `;
+        // 2. Insert history logs
+        await sql`
+          INSERT INTO history_logs (
+            session_id,
+            session_code,
+            transporter_name,
+            resi_number,
+            sorting_at,
+            sorting_by,
+            handover_at,
+            handover_by,
+            status
+          )
+          SELECT 
+            ${session_id}::UUID,
+            ${sessionData.session_code},
+            ${sessionData.transporter_name},
+            sd.barcode_resi,
+            sd.scanned_at,
+            u.full_name,
+            NOW(),
+            ${courier_name},
+            'DONE'
+          FROM sorting_details sd
+          LEFT JOIN users u ON u.id = sd.sorting_by
+          WHERE sd.session_id = ${session_id}::UUID
+        `;
 
-      // 5. Close session
-      await sql`
-        UPDATE sorting_sessions 
-        SET status = 'CLOSED', closed_at = NOW()
-        WHERE id = ${session_id}::UUID
-      `;
+        // 3. Hitung total
+        const totalPackages = await sql`
+          SELECT COUNT(*) as count FROM sorting_details 
+          WHERE session_id = ${session_id}::UUID
+        `;
 
-      return NextResponse.json({
-        success: true,
-        message: '✅ Handover berhasil! Semua paket DONE (Trust Mode)',
-        mode: 'trust',
-        total: totalPackages[0].count,
-        discrepancy: 0,
-      });
-    }
+        // 4. Insert manifest
+        await sql`
+          INSERT INTO handover_manifests (
+            session_id,
+            courier_name,
+            security_name,
+            vehicle_number,
+            courier_signature,
+            security_signature,
+            total_packages_handed,
+            total_discrepancy,
+            handover_by,
+            signed_at
+          ) VALUES (
+            ${session_id}::UUID,
+            ${courier_name},
+            ${security_name},
+            ${vehicle_number},
+            ${courier_signature},
+            ${security_signature},
+            ${totalPackages[0].count},
+            0,
+            ${session.sub}::UUID,
+            NOW()
+          )
+        `;
 
-    // =============================================
-    // MODE VERIFY: Ada discrepancy
-    // =============================================
-    if (mode === 'verify') {
-      // Step 1: Update paket yang BELUM divalidasi dan BELUM ada discrepancy
-      // Kondisi: is_validated_handover = false AND discrepancy_reason IS NULL
-      await sql`
-        UPDATE sorting_details
-        SET 
-          is_validated_handover = true,
-          validated_by = ${session.sub}::UUID,
-          validated_at = NOW(),
-          discrepancy_reason = NULL
-        WHERE session_id = ${session_id}::UUID
-          AND is_validated_handover = false
-          AND discrepancy_reason IS NULL
-      `;
+        // 5. Close session
+        await sql`
+          UPDATE sorting_sessions 
+          SET status = 'CLOSED', closed_at = NOW()
+          WHERE id = ${session_id}::UUID
+        `;
 
-      // Step 2: Paket yang SUDAH ditandai discrepancy (dari handleSetDiscrepancy)
-      // Statusnya sudah:
-      // - is_validated_handover = true
-      // - discrepancy_reason = 'NOT_FOUND' atau 'CANCELLED'
-      // - validated_by dan validated_at sudah terisi
-      // Tidak perlu diupdate lagi, biarkan apa adanya
+        result = { mode: 'trust', total: totalPackages[0].count, discrepancy: 0 };
+      }
 
-      // Step 3: Fallback - jika ada discrepancy_reasons dari frontend
-      // (Untuk jaga-jaga jika ada data yang belum terupdate)
-      if (discrepancy_reasons && Object.keys(discrepancy_reasons).length > 0) {
-        for (const [barcode, reason] of Object.entries(discrepancy_reasons)) {
+      // =============================================
+      // MODE VERIFY
+      // =============================================
+      else if (mode === 'verify') {
+        // Step 1: Update paket yang BELUM divalidasi
+        await sql`
+          UPDATE sorting_details
+          SET 
+            is_validated_handover = true,
+            validated_by = ${session.sub}::UUID,
+            validated_at = NOW(),
+            discrepancy_reason = NULL
+          WHERE session_id = ${session_id}::UUID
+            AND is_validated_handover = false
+            AND discrepancy_reason IS NULL
+        `;
+
+        // Step 2: 🔥 Update discrepancy sekaligus (1 query) – eliminasi loop
+        if (discrepancy_reasons && Object.keys(discrepancy_reasons).length > 0) {
+          const barcodes = Object.keys(discrepancy_reasons);
+          const reasons = Object.values(discrepancy_reasons);
           await sql`
             UPDATE sorting_details
             SET 
               is_validated_handover = true,
               validated_by = ${session.sub}::UUID,
               validated_at = NOW(),
-              discrepancy_reason = ${reason}::VARCHAR
+              discrepancy_reason = data.reason
+            FROM (
+              SELECT 
+                unnest(${barcodes}::VARCHAR[]) AS barcode,
+                unnest(${reasons}::VARCHAR[]) AS reason
+            ) AS data
             WHERE session_id = ${session_id}::UUID
-              AND barcode_resi = ${barcode}
+              AND barcode_resi = data.barcode
           `;
         }
+
+        // Step 3: Insert history logs
+        await sql`
+          INSERT INTO history_logs (
+            session_id,
+            session_code,
+            transporter_name,
+            resi_number,
+            sorting_at,
+            sorting_by,
+            handover_at,
+            handover_by,
+            status
+          )
+          SELECT 
+            ${session_id}::UUID,
+            ${sessionData.session_code},
+            ${sessionData.transporter_name},
+            sd.barcode_resi,
+            sd.scanned_at,
+            u.full_name,
+            NOW(),
+            ${courier_name},
+            CASE 
+              WHEN sd.discrepancy_reason IS NOT NULL THEN sd.discrepancy_reason
+              ELSE 'DONE'
+            END
+          FROM sorting_details sd
+          LEFT JOIN users u ON u.id = sd.sorting_by
+          WHERE sd.session_id = ${session_id}::UUID
+        `;
+
+        // Step 4: Hitung stats
+        const stats = await sql`
+          SELECT 
+            COUNT(*) as total,
+            COUNT(CASE WHEN discrepancy_reason IS NULL THEN 1 END) as done,
+            COUNT(CASE WHEN discrepancy_reason = 'NOT_FOUND' THEN 1 END) as not_found,
+            COUNT(CASE WHEN discrepancy_reason = 'CANCELLED' THEN 1 END) as cancelled
+          FROM sorting_details
+          WHERE session_id = ${session_id}::UUID
+        `;
+        const totalDiscrepancy = Number(stats[0].not_found) + Number(stats[0].cancelled);
+
+        // Step 5: Insert manifest
+        await sql`
+          INSERT INTO handover_manifests (
+            session_id,
+            courier_name,
+            security_name,
+            vehicle_number,
+            courier_signature,
+            security_signature,
+            total_packages_handed,
+            total_discrepancy,
+            handover_by,
+            signed_at
+          ) VALUES (
+            ${session_id}::UUID,
+            ${courier_name},
+            ${security_name},
+            ${vehicle_number},
+            ${courier_signature},
+            ${security_signature},
+            ${stats[0].total},
+            ${totalDiscrepancy},
+            ${session.sub}::UUID,
+            NOW()
+          )
+        `;
+
+        // Step 6: Close session
+        await sql`
+          UPDATE sorting_sessions 
+          SET status = 'CLOSED', closed_at = NOW()
+          WHERE id = ${session_id}::UUID
+        `;
+
+        result = {
+          mode: 'verify',
+          total: stats[0].total,
+          done: stats[0].done,
+          not_found: stats[0].not_found,
+          cancelled: stats[0].cancelled,
+          discrepancy: totalDiscrepancy,
+        };
+      } else {
+        throw new Error('Invalid mode');
       }
 
-      // Step 4: Insert history logs
-      await sql`
-        INSERT INTO history_logs (
-          session_id,
-          session_code,
-          transporter_name,
-          resi_number,
-          sorting_at,
-          sorting_by,
-          handover_at,
-          handover_by,
-          status
-        )
-        SELECT 
-          ${session_id}::UUID,
-          ${sessionData.session_code},
-          ${sessionData.transporter_name},
-          sd.barcode_resi,
-          sd.scanned_at,
-          u.full_name,
-          NOW(),
-          ${courier_name},
-          CASE 
-            WHEN sd.discrepancy_reason IS NOT NULL THEN sd.discrepancy_reason
-            ELSE 'DONE'
-          END
-        FROM sorting_details sd
-        LEFT JOIN users u ON u.id = sd.sorting_by
-        WHERE sd.session_id = ${session_id}::UUID
-      `;
+      // Commit transaksi
+      await sql`COMMIT`;
 
-      // Step 5: Hitung stats
-      const stats = await sql`
-        SELECT 
-          COUNT(*) as total,
-          COUNT(CASE WHEN discrepancy_reason IS NULL THEN 1 END) as done,
-          COUNT(CASE WHEN discrepancy_reason = 'NOT_FOUND' THEN 1 END) as not_found,
-          COUNT(CASE WHEN discrepancy_reason = 'CANCELLED' THEN 1 END) as cancelled
-        FROM sorting_details
-        WHERE session_id = ${session_id}::UUID
-      `;
-
-      const totalDiscrepancy = Number(stats[0].not_found) + Number(stats[0].cancelled);
-
-      // Step 6: Insert manifest
-      await sql`
-        INSERT INTO handover_manifests (
-          session_id,
-          courier_name,
-          security_name,
-          vehicle_number,
-          courier_signature,
-          security_signature,
-          total_packages_handed,
-          total_discrepancy,
-          handover_by,
-          signed_at
-        ) VALUES (
-          ${session_id}::UUID,
-          ${courier_name},
-          ${security_name},
-          ${vehicle_number},
-          ${courier_signature},
-          ${security_signature},
-          ${stats[0].total},
-          ${totalDiscrepancy},
-          ${session.sub}::UUID,
-          NOW()
-        )
-      `;
-
-      // Step 7: Close session
-      await sql`
-        UPDATE sorting_sessions 
-        SET status = 'CLOSED', closed_at = NOW()
-        WHERE id = ${session_id}::UUID
-      `;
-
-      return NextResponse.json({
-        success: true,
-        message: `✅ Handover selesai! ${stats[0].done} DONE, ${totalDiscrepancy} DISCREPANCY`,
-        mode: 'verify',
-        total: stats[0].total,
-        done: stats[0].done,
-        not_found: stats[0].not_found,
-        cancelled: stats[0].cancelled,
-        discrepancy: totalDiscrepancy,
-      });
+      // =============================================
+      // Response
+      // =============================================
+      if (result.mode === 'trust') {
+        return NextResponse.json({
+          success: true,
+          message: '✅ Handover berhasil! Semua paket DONE (Trust Mode)',
+          mode: 'trust',
+          total: result.total,
+          discrepancy: 0,
+        });
+      } else {
+        return NextResponse.json({
+          success: true,
+          message: `✅ Handover selesai! ${result.done} DONE, ${result.discrepancy} DISCREPANCY`,
+          mode: 'verify',
+          total: result.total,
+          done: result.done,
+          not_found: result.not_found,
+          cancelled: result.cancelled,
+          discrepancy: result.discrepancy,
+        });
+      }
+    } catch (error) {
+      // Rollback jika terjadi error
+      await sql`ROLLBACK`;
+      throw error;
     }
-
-    return NextResponse.json(
-      { success: false, message: 'Invalid mode' },
-      { status: 400 }
-    );
-
   } catch (error) {
     console.error('Error finalizing handover:', error);
     return NextResponse.json(

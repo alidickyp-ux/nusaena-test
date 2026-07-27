@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
+
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-
 export async function POST(request: NextRequest) {
   try {
+    // 1. Auth
     const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
     if (!sessionToken) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -17,6 +18,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
     }
 
+    // 2. Parse body
     const body = await request.json();
     const { barcode, operator_id, manual_session_id } = body;
 
@@ -27,14 +29,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const trimmedBarcode = barcode.trim();
+    const operatorUuid = operator_id || session.sub;
+
     // 🔥 JIKA ADA manual_session_id → SCAN KE SESSION MANUAL
     if (manual_session_id) {
-      // Cek session valid
-      const sessionCheck = await sql`
-        SELECT status, session_code 
-        FROM sorting_sessions 
-        WHERE id = ${manual_session_id}::UUID
-      `;
+      // 🔥 Optimasi: cek session dan duplikat secara paralel (Promise.all)
+      const [sessionCheck, duplicate] = await Promise.all([
+        sql`
+          SELECT status, session_code 
+          FROM sorting_sessions 
+          WHERE id = ${manual_session_id}::UUID
+        `,
+        sql`
+          SELECT id FROM sorting_details WHERE barcode_resi = ${trimmedBarcode}
+        `
+      ]);
 
       if (sessionCheck.length === 0) {
         return NextResponse.json({
@@ -50,11 +60,6 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Cek duplikat barcode
-      const duplicate = await sql`
-        SELECT id FROM sorting_details WHERE barcode_resi = ${barcode.trim()}
-      `;
-
       if (duplicate.length > 0) {
         return NextResponse.json({
           success: false,
@@ -62,7 +67,7 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // 🔥 INSERT KE SESSION MANUAL dengan semua field
+      // Insert (1 query)
       await sql`
         INSERT INTO sorting_details (
           session_id, 
@@ -74,11 +79,11 @@ export async function POST(request: NextRequest) {
           scanned_at
         ) VALUES (
           ${manual_session_id}::UUID, 
-          ${barcode.trim()}, 
-          ${operator_id || session.sub}::UUID,
-          false,           -- 🔥 BELUM di-handover
-          NULL,            -- 🔥 BELUM divalidasi
-          NULL,            -- 🔥 BELUM ada tanggal validasi
+          ${trimmedBarcode}, 
+          ${operatorUuid}::UUID,
+          false,
+          NULL,
+          NULL,
           NOW()
         )
       `;
@@ -92,9 +97,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 🔥 JIKA TIDAK ADA manual_session_id → AUTO SORTING
+    // 🔥 JIKA TIDAK ADA manual_session_id → AUTO SORTING (1 query ke stored function)
     const result = await sql`
-      SELECT process_auto_sorting(${barcode.trim()}, ${operator_id || session.sub}) AS result
+      SELECT process_auto_sorting(${trimmedBarcode}, ${operatorUuid}) AS result
     `;
 
     return NextResponse.json(result[0].result);
