@@ -28,16 +28,13 @@ export async function POST(request: NextRequest) {
 
     // 🔥 Parse box_id
     // Format: PCB23-26002071BOX-01-15.6
-    //   - box_number = token "BOX-01" (nomor box), BUKAN 14 karakter pertama
-    //     (14 karakter pertama cuma kebetulan sama panjang dengan prefix
-    //     "PCB23-26002071", itu bukan box number)
+    //   - box_number = kode satuan + nomor (BOX-01, KAR-01, DUS-01, dst),
+    //     ditangkap generic sebagai [huruf][optional "-"][angka]
     //   - weight = angka di AKHIR string, setelah pemisah terakhir "-" atau "#"
-    // Contoh lain yang harus tetap kebaca benar: "PCB23-26001234BOX01-15.6"
-    // atau "PCB23-26002112BOX21#15.6"
     const weightMatch = box_id.match(/[-#]([\d.]+)$/);
     const weight = weightMatch ? weightMatch[1] : null;
 
-    const boxNumberMatch = box_id.match(/(BOX-?\d+)(?=[-#][\d.]+$)/i);
+    const boxNumberMatch = box_id.match(/([A-Z]+-?\d+)(?=[-#][\d.]+$)/i);
     const boxNumber = boxNumberMatch ? boxNumberMatch[1] : box_id.slice(0, 50);
 
     const cleanSite = String(site).trim();

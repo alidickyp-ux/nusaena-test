@@ -66,3 +66,62 @@ export async function GET(
     );
   }
 }
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+    if (!sessionToken) {
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+    }
+
+    const userSession = await verifySession(sessionToken);
+    if (!userSession) {
+      return NextResponse.json({ success: false, message: 'Invalid session' }, { status: 401 });
+    }
+
+    const boxId = params.id;
+    const body = await request.json();
+
+    // weight boleh angka, string kosong, atau null/undefined -> semua diset null
+    const rawWeight = body.weight;
+    const weight =
+      rawWeight === '' || rawWeight === null || rawWeight === undefined
+        ? null
+        : Number(rawWeight);
+
+    if (weight !== null && Number.isNaN(weight)) {
+      return NextResponse.json(
+        { success: false, message: 'Weight harus berupa angka' },
+        { status: 400 }
+      );
+    }
+
+    const result = await sql`
+      UPDATE b2b_putaway
+      SET weight = ${weight}
+      WHERE id = ${boxId}
+      RETURNING
+        id, reference, box_id, box_number, weight, site, staging_location,
+        store_name, address, city, province, loading_status, putaway_at, putaway_by, delivery_number
+    `;
+
+    if (result.length === 0) {
+      return NextResponse.json(
+        { success: false, message: 'Box not found' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ success: true, data: result[0] });
+
+  } catch (error) {
+    console.error('Error updating box weight:', error);
+    return NextResponse.json(
+      { success: false, message: 'Failed to update weight' },
+      { status: 500 }
+    );
+  }
+}

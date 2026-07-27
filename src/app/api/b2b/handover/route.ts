@@ -53,7 +53,20 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Generate delivery number (dengan retry jika duplikat)
-    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
+    // 3. Generate delivery number (dengan retry jika duplikat)
+      // Pakai timezone Asia/Jakarta (WIB), bukan UTC, biar tanggal DN sesuai tanggal lokal
+      const now = new Date();
+      const jakartaParts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Jakarta',
+        year: '2-digit',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(now);
+
+      const yy = jakartaParts.find(p => p.type === 'year')!.value;
+      const mm = jakartaParts.find(p => p.type === 'month')!.value;
+      const dd = jakartaParts.find(p => p.type === 'day')!.value;
+      const dateStr = `${yy}${mm}${dd}`;
     let random = String(Math.floor(1000 + Math.random() * 9000));
     let deliveryNumber = `DN23-${dateStr}-${random}`;
 

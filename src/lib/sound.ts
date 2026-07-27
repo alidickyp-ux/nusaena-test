@@ -2,8 +2,9 @@
 // audio eksternal, supaya ringan & tetap jalan walau PWA offline.
 //
 // Versi Optimasi Gudang (COOL SYSTEM V3):
-// - accepted: 1 nada tinggi ganda (ding-ding cepat), sangat bersih, ceria & tegas.
-// - rejected: Pola alarm buzzer berat durasi panjang (tiiit-tiiit kasar), disonan & kontras.
+// - accepted: 3 nada naik cepat (do-mi-sol), ceria, jelas beda arah dengan rejected.
+// - rejected: 3 pulsa alarm turun, gelombang sawtooth (lebih kasar/tajam dari square),
+//             durasi total lebih panjang & berulang, biar operator sadar tanpa lihat layar.
 
 let audioCtx: AudioContext | null = null;
 
@@ -32,7 +33,7 @@ function beep(freq: number, duration: number, type: OscillatorType, volume: numb
     // Fade-in super cepat untuk menghilangkan bunyi klik statis digital
     gain.gain.setValueAtTime(0.0001, startAt);
     gain.gain.linearRampToValueAtTime(volume, startAt + 0.01);
-    
+
     // Kurva rampa linear agar sustain suara penuh sepanjang durasi (tidak langsung drop)
     gain.gain.setValueAtTime(volume, startAt + duration - 0.02);
     gain.gain.linearRampToValueAtTime(0.0001, startAt + duration);
@@ -47,24 +48,26 @@ function beep(freq: number, duration: number, type: OscillatorType, volume: numb
   }
 }
 
-/** * Resi diterima / match 
- * Menggunakan 2 nada harmonis cepat (C6 ke E6) dalam waktu singkat.
- * Menghasilkan bunyi "ding-ding" jernih khas kasir modern.
+/**
+ * Resi diterima / match
+ * 3 nada naik cepat (C6 - E6 - G6), arah melodi NAIK.
+ * Total durasi pendek (~0.22s) — kesan cepat, ringan, positif.
  */
 export function playAcceptedSound() {
-  beep(1046.50, 0.07, 'sine', 0.25, 0);    // C6 (Cepat)
-  beep(1318.51, 0.12, 'sine', 0.25, 0.06); // E6 (Sustain sedikit)
+  beep(880.00,  0.06, 'sine', 0.25, 0);     // A5
+  beep(1108.73, 0.06, 'sine', 0.25, 0.05);  // C#6
+  beep(1318.51, 0.06, 'sine', 0.25, 0.10);  // E6
+  beep(1760.00, 0.16, 'sine', 0.30, 0.15);  // A6 — penutup lebih panjang
 }
 
-/** * Resi ditolak / duplikat / salah 
- * Menggunakan 2 pulsa panjang gelombang 'square' frekuensi rendah-menengah (Buzzer Berat).
- * Pola ditiup panjang: "BZZZTT... BZZZTT..." dengan total durasi setengah detik lebih.
- * Disonan di telinga agar operator langsung sadar tanpa melihat layar HP.
+/**
+ * Resi ditolak / duplikat / salah
+ * 3 pulsa turun (arah melodi TURUN, kebalikan dari accepted), gelombang 'sawtooth'
+ * yang lebih tajam/kasar dari 'square' — beda karakter timbre, bukan cuma beda nada.
+ * Total durasi lebih panjang (~0.9s) supaya jelas "ini alarm, bukan konfirmasi".
  */
 export function playRejectedSound() {
-  // Pulsa Buzzer Pertama (Lebih panjang dan kasar)
-  beep(180, 0.22, 'square', 0.35, 0);
-  
-  // Pulsa Buzzer Kedua (Sedikit lebih rendah, memberi efek turun/salah)
-  beep(150, 0.28, 'square', 0.35, 0.26);
+  beep(220, 0.18, 'sawtooth', 0.35, 0);
+  beep(180, 0.18, 'sawtooth', 0.35, 0.24);
+  beep(130, 0.30, 'sawtooth', 0.38, 0.48); // pulsa terakhir paling rendah & panjang, kesan "berat/final"
 }
