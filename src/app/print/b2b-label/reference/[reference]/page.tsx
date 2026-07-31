@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { Printer, ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import JsBarcode from "jsbarcode";
+import QRCode from "qrcode";
 
 interface BoxData {
   id: string;
@@ -30,14 +30,15 @@ const SENDER = {
   address: "Jl. Kopo Bihbul Raya No.68, Sayati, Margahayu, Bandung 40228",
 };
 
-// 🔥 Satu warna teks tegas untuk semua isi label — tanpa abu-abu/biru,
-// supaya kontras dan kebaca jelas di thermal printer.
 const INK = "#000000";
 
 export default function B2BLabelByReferencePage() {
   const params = useParams();
-  const reference = params.reference as string;
-  const barcodeRef = useRef<SVGSVGElement>(null);
+  
+  const rawReference = (params.reference as string) || "";
+  const reference = decodeURIComponent(rawReference);
+
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const [loading, setLoading] = useState(true);
   const [boxes, setBoxes] = useState<BoxData[]>([]);
@@ -51,7 +52,6 @@ export default function B2BLabelByReferencePage() {
       setError("Invalid reference");
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reference]);
 
   const fetchData = async () => {
@@ -71,9 +71,6 @@ export default function B2BLabelByReferencePage() {
       const fetchedBoxes: BoxData[] = boxData.data?.boxes || [];
       setBoxes(fetchedBoxes);
 
-      // 🔥 total_volume dari API kadang kosong/0 walau box-nya punya nilai
-      // volume masing-masing. Jumlahkan juga langsung dari boxes sebagai
-      // fallback, dan pakai yang lebih besar / yang ada datanya.
       const summedWeight = fetchedBoxes.reduce((sum, b) => sum + (parseFloat(b.weight) || 0), 0);
       const summedVolume = fetchedBoxes.reduce((sum, b) => sum + (parseFloat(b.volume || "0") || 0), 0);
 
@@ -90,31 +87,29 @@ export default function B2BLabelByReferencePage() {
     }
   };
 
-  const firstBox = boxes[0];
+  const firstBox = boxes[0] || {};
   const refNumber = reference;
 
   useEffect(() => {
-    if (barcodeRef.current && refNumber) {
-      try {
-        JsBarcode(barcodeRef.current, refNumber, {
-          format: "CODE128",
-          // 🔥 Modul barcode dilebarkan supaya tiap batang cukup tebal untuk
-          // discan scanner genggam/thermal — sebelumnya svg di-stretch paksa
-          // via CSS width/height 100% tanpa jaga rasio, itu yang bikin
-          // proporsi antar-batang kacau dan gagal kebaca (lihat fix di CSS
-          // svg di bawah: sekarang cuma height yang dipatok, width ikut
-          // proporsional otomatis).
-          width: 5.0,
-          height: 100,
-          displayValue: false,
-          margin: 12,
-          background: "#ffffff",
-        });
-      } catch (e) {
-        console.error("Barcode render error:", e);
+  if (!loading && qrCanvasRef.current && refNumber) {
+    QRCode.toCanvas(
+      qrCanvasRef.current,
+      refNumber,
+      {
+        width: 40, // Dikunci ke 40px
+        margin: 0, // Tanpa margin bawaan agar tidak makan space
+        color: {
+          dark: "#000000",
+          light: "#ffffff",
+        },
+        errorCorrectionLevel: "M",
+      },
+      (err) => {
+        if (err) console.error("QR Code render error:", err);
       }
-    }
-  }, [refNumber, loading]);
+    );
+  }
+}, [refNumber, loading]);
 
   const handlePrint = () => {
     window.print();
@@ -146,13 +141,10 @@ export default function B2BLabelByReferencePage() {
 
   const shipToLine = [firstBox.address, firstBox.city, firstBox.province].filter(Boolean).join(", ");
 
-  // 🔥 Label ukuran fisik 100mm x 68mm (skala ~3.78px/mm).
-  // Margin kertas atas-bawah 0.2cm (2mm) ≈ 8px — beda dari padding kiri-kanan
-  // yang tetap 3mm ≈ 11px seperti sebelumnya (cuma atas-bawah yang diminta berubah).
-  const LABEL_W = 378; // 100mm
-  const LABEL_H = 257; // 68mm
-  const PAD_X = 11; // 3mm kiri-kanan
-  const PAD_Y = 8; // 2mm / 0.2cm atas-bawah
+  const LABEL_W = 378;
+  const LABEL_H = 257;
+  const PAD_X = 11;
+  const PAD_Y = 8;
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-start">
@@ -264,17 +256,19 @@ export default function B2BLabelByReferencePage() {
           </div>
         </div>
 
-        {/* Sender / Ship To — dibagi 30:70 karena Sender isinya statis & pendek,
-            Ship To (alamat penerima) butuh ruang jauh lebih lebar */}
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            padding: "5px 0",
-            borderBottom: "1px solid #000000",
-            flexShrink: 0,
-          }}
-        >
+        {/* Sender / Ship To */}
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              padding: "5px 0",
+              borderBottom: "1px solid #000000",
+              flex: "1 1 auto",   // ganti dari flexShrink: 0
+              minHeight: 0,        // tambahan
+              overflow: "hidden",  // tambahan
+            }}
+          >
+            
           <div style={{ flex: "0 0 30%", minWidth: 0, borderRight: "1px solid #000000", paddingRight: "8px" }}>
             <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: INK, letterSpacing: "0.3px", marginBottom: "2px" }}>
               SENDER
@@ -327,7 +321,7 @@ export default function B2BLabelByReferencePage() {
           </div>
         </div>
 
-        {/* Qty / Weight / Volume — selalu 3-3nya tampil */}
+        {/* Qty / Weight / Volume */}
         <div
           style={{
             display: "flex",
@@ -339,7 +333,6 @@ export default function B2BLabelByReferencePage() {
           <div style={{ flex: "0 0 33%" }}>
             <span style={{ fontSize: "8px", fontWeight: 900, color: INK, marginRight: "3px" }}>TOTAL PACKAGE:</span>
             <span style={{ fontSize: "16px", fontWeight: 900, color: INK }}>{totals.total_box}</span>
-            <span style={{ fontSize: "8px", color: INK, fontWeight: 900, marginLeft: "2px" }}></span>
           </div>
           <div style={{ flex: "0 0 34%" }}>
             <span style={{ fontSize: "8px", fontWeight: 900, color: INK, marginRight: "3px" }}>WEIGHT:</span>
@@ -349,14 +342,24 @@ export default function B2BLabelByReferencePage() {
           <div style={{ flex: "0 0 33%" }}>
             <span style={{ fontSize: "8px", fontWeight: 900, color: INK, marginRight: "3px" }}>VOLUME:</span>
             <span style={{ fontSize: "16px", fontWeight: 900, color: INK }}>{totals.total_volume.toFixed(2)}</span>
-            <span style={{ fontSize: "8px", color: INK, fontWeight: 900, marginLeft: "2px" }}></span>
           </div>
         </div>
 
-        {/* Items */}
-        <div style={{ padding: "3px 0", flexShrink: 0 }}>
+                {/* Items + QR Code — selalu dapat ruang penuh, di antara garis qty dan border bawah */}
+        <div
+          style={{
+            flex: "0 0 auto",       // dikunci, tidak pernah dipaksa mengecil
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "6px",
+            marginTop: "4px",
+          }}
+        >
           <div
             style={{
+              flex: "1 1 auto",
+              minWidth: 0,
               fontSize: "7.5px",
               fontWeight: 800,
               fontFamily: "monospace",
@@ -366,25 +369,20 @@ export default function B2BLabelByReferencePage() {
               textOverflow: "ellipsis",
             }}
           >
-            <span style={{ fontWeight: 900 }}>ITEMS:</span> {boxes.map((d) => `${d.box_number}(${d.weight}kg)`).join(" • ")}
+            <span style={{ fontWeight: 900 }}>ITEMS:</span>{" "}
+            {boxes.map((d) => `${d.box_number}(${d.weight}kg)`).join(" • ")}
           </div>
+          <canvas
+            ref={qrCanvasRef}
+            style={{
+              height: "38px",
+              width: "40px",
+              flexShrink: 0,
+              display: "block",
+            }}
+          />
         </div>
-
-        {/* Barcode — cuma height yang dipatok, width ikut proporsional (bukan
-            di-stretch paksa) supaya rasio antar-batang tetap benar dan bisa discan */}
-        <div
-          style={{
-            flex: "1 1 0",
-            minHeight: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <svg ref={barcodeRef} style={{ height: "100%", width: "90%", maxWidth: "100%" }} />
         </div>
-      </div>
-
       <style jsx global>{`
         @media print {
           body {
@@ -415,7 +413,7 @@ export default function B2BLabelByReferencePage() {
           }
         }
         @page {
-          size: 100mm 68mm;
+          size: 100mm 72mm;
           margin: 0;
         }
       `}</style>
