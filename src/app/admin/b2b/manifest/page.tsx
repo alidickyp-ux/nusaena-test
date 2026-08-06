@@ -731,28 +731,32 @@ export default function B2BManifestListPage() {
     window.open(`/print/b2b-label/reference/${encodeURIComponent(reference)}`, "_blank");
   };
 
-  const filteredManifests = manifests.filter((m) => {
-    const matchSearch =
-      m.delivery_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.vendor_name.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchSearch;
-  });
+    // Filter untuk DN Header
+      const filteredManifests = manifests.filter((m) => {
+        const search = searchTerm.trim().toLowerCase();
+        const dn = (m.delivery_number || "").toLowerCase();
+        const vendor = (m.vendor_name || "").toLowerCase();
+        return dn.includes(search) || vendor.includes(search);
+      });
 
-  const filteredReferences = allReferences.filter((r) => {
-    const matchSearch =
-      (r.delivery_number || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.resi_number || "").toLowerCase().includes(searchTerm.toLowerCase());
-    return matchSearch;
-  });
+      // Filter untuk Semua Reference
+      const filteredReferences = allReferences.filter((r) => {
+        const search = searchTerm.trim().toLowerCase();
+        const dn = (r.delivery_number || "").toLowerCase();
+        const ref = (r.reference || "").toLowerCase();
+        const resi = (r.resi_number || "").toLowerCase();
+        const status = (r.delivered_status || "").toLowerCase();
+        return dn.includes(search) || ref.includes(search) || resi.includes(search) || status.includes(search);
+      });
 
-  const filteredNoDN = referencesWithoutDN.filter((r) => {
-    const matchSearch =
-      r.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.store_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.site || "").toLowerCase().includes(searchTerm.toLowerCase());
-    return matchSearch;
-  });
+      // Filter untuk Tanpa DN
+      const filteredNoDN = referencesWithoutDN.filter((r) => {
+        const search = searchTerm.trim().toLowerCase();
+        const ref = (r.reference || "").toLowerCase();
+        const store = (r.store_name || "").toLowerCase();
+        const site = (r.site || "").toLowerCase();
+        return ref.includes(search) || store.includes(search) || site.includes(search);
+      });
 
   const formatDate = (d: string | null) => {
     if (!d) return "-";
