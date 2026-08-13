@@ -1,5 +1,3 @@
-// app/api/b2b/manifest/references/all/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
@@ -18,52 +16,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, message: 'Invalid session' }, { status: 401 });
     }
 
-    // 🔥 Pagination params (default limit 25)
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const limit = Math.max(1, parseInt(searchParams.get('limit') || '25', 10));
     const offset = (page - 1) * limit;
+    const search = (searchParams.get('search') || '').trim();
+    const pattern = `%${search}%`;
 
     const rows = await sql`
-      WITH combined AS (
-        SELECT 
-          mr.id,
-          mr.manifest_id,
-          mr.reference,
-          mr.resi_number,
-          mr.delivered_status,
-          mr.arrive_date,
-          mr.created_at,
-          mr.updated_at,
-          mo.delivery_number,
-          mo.vendor_name,
-          mo.loading_date,
-          TRUE as has_dn,
-          NULL::varchar(100) as box_id,
-          NULL::varchar(50) as site,
-          NULL::varchar(100) as store_name,
-          NULL::text as address,
-          NULL::varchar(50) as city,
-          NULL::varchar(50) as province,
-          NULL::bigint as total_box
-        FROM manifest_reference mr
-        INNER JOIN manifest_order mo ON mo.id = mr.manifest_id
-
-        UNION ALL
-
+      WITH grouped AS (
         SELECT
-          NULL::uuid as id,
-          NULL::uuid as manifest_id,
           reference,
-          NULL::varchar(100) as resi_number,
-          NULL::varchar(20) as delivered_status,
-          NULL::timestamptz as arrive_date,
           MAX(putaway_at) as created_at,
-          NULL::timestamptz as updated_at,
-          NULL::varchar(50) as delivery_number,
-          NULL::varchar(100) as vendor_name,
-          NULL::timestamptz as loading_date,
-          FALSE as has_dn,
           MAX(box_id) as box_id,
           MAX(site) as site,
           MAX(store_name) as store_name,
@@ -78,29 +42,33 @@ export async function GET(request: NextRequest) {
         GROUP BY reference
       )
       SELECT *, COUNT(*) OVER() as total_count
-      FROM combined
-      ORDER BY delivery_number ASC NULLS LAST, reference ASC
+      FROM grouped
+      WHERE (
+        reference ILIKE ${pattern} OR
+        store_name ILIKE ${pattern} OR
+        site ILIKE ${pattern}
+      )
+      ORDER BY reference ASC
       LIMIT ${limit} OFFSET ${offset}
     `;
 
-    const totalCount = rows.length > 0 ? Number(rows[0].total_count) : 0;
+    const totalCount = rows.length > 0 ? Number((rows[0] as any).total_count) : 0;
     const totalPages = Math.max(1, Math.ceil(totalCount / limit));
-
-    const data = rows.map(({ total_count, ...rest }: any) => rest);
+    const data = rows.map(({ total_count, ...rest }: any) => ({
+      ...rest,
+      id: null,
+      manifest_id: null,
+      has_dn: false,
+    }));
 
     return NextResponse.json({
       success: true,
       data,
-      pagination: {
-        page,
-        limit,
-        totalCount,
-        totalPages,
-      },
+      pagination: { page, limit, totalCount, totalPages },
     });
 
   } catch (error) {
-    console.error('Error fetching all references:', error);
+    console.error('Error fetching references without DN:', error);
     return NextResponse.json(
       { success: false, message: error instanceof Error ? error.message : 'Failed to fetch references' },
       { status: 500 }

@@ -17,6 +17,7 @@ import {
   Hash,
   MapPin,
   Plus,
+  Trash,
 } from "lucide-react";
 import showToast, { withToast } from '@/lib/toast';
 
@@ -32,8 +33,8 @@ interface ManifestData {
 }
 
 interface ReferenceData {
-  id: string;
-  manifest_id: string;
+  id: string | null;
+  manifest_id: string | null;
   reference: string;
   resi_number: string | null;
   delivered_status: string;
@@ -50,6 +51,20 @@ interface ReferenceData {
   province?: string;
   has_dn?: boolean;
   total_box?: number;
+  loading_status?: string;
+}
+
+interface RefByManifest {
+  id: string;
+  reference: string;
+  delivery_number: string;
+}
+
+interface PaginationInfo {
+  page: number;
+  limit: number;
+  totalCount: number;
+  totalPages: number;
 }
 
 interface SiteData {
@@ -68,6 +83,8 @@ interface ShipToData {
   city: string | null;
   province: string | null;
 }
+
+const EMPTY_PAGINATION: PaginationInfo = { page: 1, limit: 25, totalCount: 0, totalPages: 1 };
 
 // 🔥 Dipakai bersama oleh EditReferenceModal & EditShipToModal
 async function fetchShipToFromPutaway(referenceCode: string): Promise<ShipToData | null> {
@@ -539,12 +556,27 @@ function EditShipToModal({
 
 export default function B2BManifestListPage() {
   const [manifests, setManifests] = useState<ManifestData[]>([]);
-  const [allReferences, setAllReferences] = useState<ReferenceData[]>([]);
-  const [referencesWithoutDN, setReferencesWithoutDN] = useState<ReferenceData[]>([]);
+  // 🔥 Dipakai HANYA untuk tombol print di tab DN Header (ringan, tidak dipaginasi)
+  const [referencesByManifest, setReferencesByManifest] = useState<RefByManifest[]>([]);
+
+  // 🔥 Tab "Semua Reference" — pagination & search sendiri
+  const [withDnRefs, setWithDnRefs] = useState<ReferenceData[]>([]);
+  const [withDnPage, setWithDnPage] = useState(1);
+  const [withDnPagination, setWithDnPagination] = useState<PaginationInfo>(EMPTY_PAGINATION);
+  const [loadingWithDn, setLoadingWithDn] = useState(true);
+
+  // 🔥 Tab "Tanpa DN" — pagination & search sendiri
+  const [noDnRefs, setNoDnRefs] = useState<ReferenceData[]>([]);
+  const [noDnPage, setNoDnPage] = useState(1);
+  const [noDnPagination, setNoDnPagination] = useState<PaginationInfo>(EMPTY_PAGINATION);
+  const [loadingNoDn, setLoadingNoDn] = useState(true);
+
   const [sites, setSites] = useState<SiteData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // loading manifest (tab 1)
+
   const [searchTerm, setSearchTerm] = useState("");
-  const [exporting, setExporting] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
   const [activeTab, setActiveTab] = useState<"dn" | "references" | "nodn">("dn");
 
   const [editingRef, setEditingRef] = useState<ReferenceData | null>(null);
@@ -555,24 +587,49 @@ export default function B2BManifestListPage() {
 
   // 🔥 State untuk create modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
-  reference: '',
-  box_id: '',
-  box_number: '',
-  weight: '',
-  volume: '',
-  brand: '',
-  site: '',
-  store_name: '',
-  address: '',
-  city: '',
-  province: '',
-});
+    reference: '',
+    box_id: '',
+    box_number: '',
+    weight: '',
+    volume: '',
+    brand: '',
+    site: '',
+    store_name: '',
+    address: '',
+    city: '',
+    province: '',
+  });
 
+  // 🔥 Debounce search: tunggu 400ms setelah user berhenti mengetik
   useEffect(() => {
-    fetchData();
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 400);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  // 🔥 Reset ke halaman 1 setiap kali search berubah
+  useEffect(() => {
+    setWithDnPage(1);
+    setNoDnPage(1);
+  }, [debouncedSearch]);
+
+  // Initial load: manifest, referensi ringan untuk tombol print, dan sites
+  useEffect(() => {
+    fetchManifests();
+    fetchReferencesByManifest();
     fetchSites();
   }, []);
+
+  // Fetch tab "Semua Reference" setiap kali halaman atau search berubah
+  useEffect(() => {
+    fetchWithDn();
+  }, [withDnPage, debouncedSearch]);
+
+  // Fetch tab "Tanpa DN" setiap kali halaman atau search berubah
+  useEffect(() => {
+    fetchNoDn();
+  }, [noDnPage, debouncedSearch]);
 
   const fetchSites = async () => {
     try {
@@ -586,33 +643,92 @@ export default function B2BManifestListPage() {
     }
   };
 
-  const fetchData = async () => {
+  const fetchManifests = async () => {
     setLoading(true);
     try {
-      const resManifests = await fetch("/api/b2b/manifest", { cache: "no-store" });
-      if (!resManifests.ok) {
+      const res = await fetch("/api/b2b/manifest", { cache: "no-store" });
+      if (!res.ok) {
         showToast.error("Gagal memuat data manifest");
         return;
       }
-      const manifestData = await resManifests.json();
-      setManifests(manifestData.data || []);
-
-      const resReferences = await fetch("/api/b2b/manifest/references/all", { cache: "no-store" });
-      if (resReferences.ok) {
-        const refData = await resReferences.json();
-        const allRefs: ReferenceData[] = refData.data || [];
-        setAllReferences(allRefs);
-        setReferencesWithoutDN(allRefs.filter((ref) => ref.has_dn === false));
-      } else {
-        setAllReferences([]);
-        setReferencesWithoutDN([]);
-      }
+      const data = await res.json();
+      setManifests(data.data || []);
     } catch (error) {
-      console.error("Error fetching data:", error);
+      console.error("Error fetching manifest:", error);
       showToast.error("Error fetching data");
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchReferencesByManifest = async () => {
+    try {
+      const res = await fetch("/api/b2b/manifest/references/by-manifest", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setReferencesByManifest(data.data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching references by manifest:", error);
+    }
+  };
+
+  const fetchWithDn = async () => {
+    setLoadingWithDn(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(withDnPage),
+        limit: "25",
+        search: debouncedSearch,
+      });
+      const res = await fetch(`/api/b2b/manifest/references/with-dn?${params}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setWithDnRefs(data.data || []);
+        if (data.pagination) setWithDnPagination(data.pagination);
+      } else {
+        setWithDnRefs([]);
+      }
+    } catch (error) {
+      console.error("Error fetching references:", error);
+      showToast.error("Error fetching references");
+    } finally {
+      setLoadingWithDn(false);
+    }
+  };
+
+  const fetchNoDn = async () => {
+    setLoadingNoDn(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(noDnPage),
+        limit: "25",
+        search: debouncedSearch,
+      });
+      const res = await fetch(`/api/b2b/manifest/references/without-dn?${params}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setNoDnRefs(data.data || []);
+        if (data.pagination) setNoDnPagination(data.pagination);
+      } else {
+        setNoDnRefs([]);
+      }
+    } catch (error) {
+      console.error("Error fetching references tanpa DN:", error);
+      showToast.error("Error fetching references tanpa DN");
+    } finally {
+      setLoadingNoDn(false);
+    }
+  };
+
+  // 🔥 Refresh semua data sekaligus (dipakai setelah create/edit/delete & tombol Refresh)
+  const fetchData = async () => {
+    await Promise.all([
+      fetchManifests(),
+      fetchReferencesByManifest(),
+      fetchWithDn(),
+      fetchNoDn(),
+    ]);
   };
 
   const handleSaveReference = async (data: {
@@ -687,40 +803,68 @@ export default function B2BManifestListPage() {
 
   // 🔥 handleCreateBox
   const handleCreateBox = async () => {
-  try {
-    const res = await fetch('/api/b2b/putaway/manual-create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(createForm),
-    });
-
-    if (res.ok) {
-      showToast.success('✅ Box berhasil dibuat');
-      setIsCreateModalOpen(false);
-      // 🔥 Fix: Include box_number in reset
-      setCreateForm({ 
-        reference: '', 
-        box_id: '', 
-        box_number: '', // Add this line
-        weight: '', 
-        volume: '', 
-        brand: '',
-        site: '', 
-        store_name: '', 
-        address: '', 
-        city: '', 
-        province: '' 
+    try {
+      const res = await fetch('/api/b2b/putaway/manual-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createForm),
       });
-      fetchData();
-    } else {
-      const error = await res.json();
-      showToast.error(error.message || 'Gagal membuat box');
+
+      if (res.ok) {
+        showToast.success('✅ Box berhasil dibuat');
+        setIsCreateModalOpen(false);
+        setCreateForm({
+          reference: '',
+          box_id: '',
+          box_number: '',
+          weight: '',
+          volume: '',
+          brand: '',
+          site: '',
+          store_name: '',
+          address: '',
+          city: '',
+          province: ''
+        });
+        fetchData();
+      } else {
+        const error = await res.json();
+        showToast.error(error.message || 'Gagal membuat box');
+      }
+    } catch (error) {
+      console.error('Error creating box:', error);
+      showToast.error('Error creating box');
     }
-  } catch (error) {
-    console.error('Error creating box:', error);
-    showToast.error('Error creating box');
-  }
-};
+  };
+
+  const handleDeleteReference = async (ref: ReferenceData) => {
+    if (!confirm("Yakin ingin menghapus reference ini? Semua box akan di hapus.")) return;
+
+    const key = ref.id || ref.reference;
+    setDeletingId(key);
+    try {
+      const query = ref.id
+        ? `id=${ref.id}`
+        : `reference=${encodeURIComponent(ref.reference)}`;
+
+      const res = await fetch(`/api/b2b/putaway/manual-create?${query}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        showToast.success("✅ Reference berhasil dihapus");
+        await fetchData();
+      } else {
+        const error = await res.json();
+        showToast.error(error.message || "Gagal menghapus reference");
+      }
+    } catch (error) {
+      console.error("Error deleting:", error);
+      showToast.error("Terjadi kesalahan saat menghapus");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handleEditClick = (ref: ReferenceData) => {
     setEditingRef(ref);
@@ -731,34 +875,15 @@ export default function B2BManifestListPage() {
     window.open(`/print/b2b-label/reference/${encodeURIComponent(reference)}`, "_blank");
   };
 
-    // Filter untuk DN Header
-      const filteredManifests = manifests.filter((m) => {
-        const search = searchTerm.trim().toLowerCase();
-        const dn = (m.delivery_number || "").toLowerCase();
-        const vendor = (m.vendor_name || "").toLowerCase();
-        return dn.includes(search) || vendor.includes(search);
-      });
+  // Filter untuk DN Header (client-side, list manifest biasanya kecil)
+  const filteredManifests = manifests.filter((m) => {
+    const search = searchTerm.trim().toLowerCase();
+    const dn = (m.delivery_number || "").toLowerCase();
+    const vendor = (m.vendor_name || "").toLowerCase();
+    return dn.includes(search) || vendor.includes(search);
+  });
 
-      // Filter untuk Semua Reference
-      const filteredReferences = allReferences.filter((r) => {
-        const search = searchTerm.trim().toLowerCase();
-        const dn = (r.delivery_number || "").toLowerCase();
-        const ref = (r.reference || "").toLowerCase();
-        const resi = (r.resi_number || "").toLowerCase();
-        const status = (r.delivered_status || "").toLowerCase();
-        return dn.includes(search) || ref.includes(search) || resi.includes(search) || status.includes(search);
-      });
-
-      // Filter untuk Tanpa DN
-      const filteredNoDN = referencesWithoutDN.filter((r) => {
-        const search = searchTerm.trim().toLowerCase();
-        const ref = (r.reference || "").toLowerCase();
-        const store = (r.store_name || "").toLowerCase();
-        const site = (r.site || "").toLowerCase();
-        return ref.includes(search) || store.includes(search) || site.includes(search);
-      });
-
-  const formatDate = (d: string | null) => {
+  const formatDate = (d: string | null | undefined) => {
     if (!d) return "-";
     return new Date(d).toLocaleString("id-ID", {
       day: "2-digit",
@@ -769,7 +894,7 @@ export default function B2BManifestListPage() {
     });
   };
 
-  const formatDateOnly = (d: string | null) => {
+  const formatDateOnly = (d: string | null | undefined) => {
     if (!d) return "-";
     return new Date(d).toLocaleDateString("id-ID", {
       day: "2-digit",
@@ -781,7 +906,6 @@ export default function B2BManifestListPage() {
   const formatWeight = (w: string) => `${Number(w).toLocaleString("id-ID")} kg`;
 
   const handleExportPutaway = async () => {
-    setExporting(true);
     try {
       const res = await fetch("/api/b2b/export/putaway", { cache: "no-store" });
       if (!res.ok) throw new Error("Gagal export");
@@ -863,8 +987,6 @@ export default function B2BManifestListPage() {
     } catch (error) {
       console.error("Export error:", error);
       showToast.error("Error export");
-    } finally {
-      setExporting(false);
     }
   };
 
@@ -877,7 +999,6 @@ export default function B2BManifestListPage() {
           <p className="text-sm text-slate-500 mt-1">Daftar surat jalan B2B berdasarkan DN Number</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* 🔥 Tombol Buat Baru */}
           <button
             onClick={() => setIsCreateModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
@@ -887,11 +1008,10 @@ export default function B2BManifestListPage() {
           </button>
           <button
             onClick={handleExportPutaway}
-            disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors"
           >
             <FileSpreadsheet className="w-4 h-4" />
-            {exporting ? "Exporting..." : "Export CSV"}
+            Export CSV
           </button>
           <button
             onClick={fetchData}
@@ -940,7 +1060,7 @@ export default function B2BManifestListPage() {
               }`}
             >
               <List className="w-4 h-4" />
-              Semua Reference ({allReferences.length})
+              Semua Reference ({withDnPagination.totalCount})
             </button>
             <button
               onClick={() => setActiveTab("nodn")}
@@ -951,7 +1071,7 @@ export default function B2BManifestListPage() {
               }`}
             >
               <PackageCheck className="w-4 h-4" />
-              Tanpa DN ({referencesWithoutDN.length})
+              Tanpa DN ({noDnPagination.totalCount})
             </button>
           </div>
         </div>
@@ -998,7 +1118,7 @@ export default function B2BManifestListPage() {
                     </tr>
                   ) : (
                     filteredManifests.map((m) => {
-                      const refsUnderThisDN = allReferences.filter(
+                      const refsUnderThisDN = referencesByManifest.filter(
                         (r) => r.delivery_number === m.delivery_number
                       );
 
@@ -1100,20 +1220,20 @@ export default function B2BManifestListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {loading ? (
+                  {loadingWithDn ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-8 text-center text-slate-500 text-sm">
                         Loading...
                       </td>
                     </tr>
-                  ) : filteredReferences.length === 0 ? (
+                  ) : withDnRefs.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-8 text-center text-slate-500 text-sm">
-                        Belum ada reference
+                        {searchTerm ? "Tidak ada reference yang sesuai" : "Belum ada reference"}
                       </td>
                     </tr>
                   ) : (
-                    filteredReferences.map((ref) => (
+                    withDnRefs.map((ref) => (
                       <tr key={ref.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3">
                           <span className="font-mono text-sm text-slate-700">
@@ -1166,6 +1286,31 @@ export default function B2BManifestListPage() {
                   )}
                 </tbody>
               </table>
+
+              {/* 🔥 Pagination tab Semua Reference */}
+              {withDnPagination.totalPages > 1 && (
+                <div className="flex items-center justify-between px-2 py-3 mt-2 border-t border-slate-100">
+                  <span className="text-xs text-slate-500">
+                    Halaman {withDnPagination.page} dari {withDnPagination.totalPages} · {withDnPagination.totalCount} total data
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setWithDnPage((p) => Math.max(1, p - 1))}
+                      disabled={withDnPagination.page <= 1}
+                      className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
+                    >
+                      Prev
+                    </button>
+                    <button
+                      onClick={() => setWithDnPage((p) => Math.min(withDnPagination.totalPages, p + 1))}
+                      disabled={withDnPagination.page >= withDnPagination.totalPages}
+                      className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1175,47 +1320,29 @@ export default function B2BManifestListPage() {
               <table className="w-full">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Reference
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Store
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Site
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      City
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Province
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Address
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Box
-                    </th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Aksi
-                    </th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Reference</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Store</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Site</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">City</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Province</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Address</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Box</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {loading ? (
+                  {loadingNoDn ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
-                        Loading...
-                      </td>
+                      <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">Loading...</td>
                     </tr>
-                  ) : filteredNoDN.length === 0 ? (
+                  ) : noDnRefs.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
                         {searchTerm ? "Tidak ada reference yang sesuai" : "Semua reference sudah memiliki DN"}
                       </td>
                     </tr>
                   ) : (
-                    filteredNoDN.map((ref) => (
+                    noDnRefs.map((ref) => (
                       <tr key={ref.reference} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3">
                           <span className="font-mono font-bold text-sm text-slate-800">{ref.reference}</span>
@@ -1244,6 +1371,18 @@ export default function B2BManifestListPage() {
                             >
                               <MapPin className="w-4 h-4" />
                             </button>
+                            <button
+                              onClick={() => handleDeleteReference(ref)}
+                              disabled={deletingId !== null && deletingId === (ref.id || ref.reference)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                              title="Hapus"
+                            >
+                              {deletingId !== null && deletingId === (ref.id || ref.reference) ? (
+                                <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <Trash className="w-4 h-4" />
+                              )}
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1251,6 +1390,31 @@ export default function B2BManifestListPage() {
                   )}
                 </tbody>
               </table>
+
+              {/* 🔥 Pagination tab Tanpa DN */}
+              {noDnPagination.totalPages > 1 && (
+                <div className="flex items-center justify-between px-2 py-3 mt-2 border-t border-slate-100">
+                  <span className="text-xs text-slate-500">
+                    Halaman {noDnPagination.page} dari {noDnPagination.totalPages} · {noDnPagination.totalCount} total data
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setNoDnPage((p) => Math.max(1, p - 1))}
+                      disabled={noDnPagination.page <= 1}
+                      className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
+                    >
+                      Prev
+                    </button>
+                    <button
+                      onClick={() => setNoDnPage((p) => Math.min(noDnPagination.totalPages, p + 1))}
+                      disabled={noDnPagination.page >= noDnPagination.totalPages}
+                      className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1281,199 +1445,198 @@ export default function B2BManifestListPage() {
       />
 
       {/* 🔥 Modal Create Box */}
-{isCreateModalOpen && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-    <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-slate-800">Buat Box Baru</h3>
-        <button onClick={() => setIsCreateModalOpen(false)} className="p-1 hover:bg-slate-100 rounded-lg">
-          <X className="w-5 h-5 text-slate-400" />
-        </button>
-      </div>
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-800">Buat Box Baru</h3>
+              <button onClick={() => setIsCreateModalOpen(false)} className="p-1 hover:bg-slate-100 rounded-lg">
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
 
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Reference *
-            </label>
-            <input
-              type="text"
-              value={createForm.reference}
-              onChange={(e) => setCreateForm({ ...createForm, reference: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
-              placeholder="SKR23232"
-            />
-            <p className="text-[10px] text-slate-400 mt-1">
-              Reference wajib diisi
-            </p>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Box ID
-            </label>
-            <input
-              type="text"
-              value={createForm.box_id}
-              onChange={(e) => setCreateForm({ ...createForm, box_id: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
-              placeholder="Kosongkan untuk auto = Reference"
-            />
-            <p className="text-[10px] text-slate-400 mt-1">
-              Biarkan kosong untuk menggunakan Reference sebagai Box ID
-            </p>
-          </div>
-        </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    Reference *
+                  </label>
+                  <input
+                    type="text"
+                    value={createForm.reference}
+                    onChange={(e) => setCreateForm({ ...createForm, reference: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+                    placeholder="SKR23232"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Reference wajib diisi
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    Box ID
+                  </label>
+                  <input
+                    type="text"
+                    value={createForm.box_id}
+                    onChange={(e) => setCreateForm({ ...createForm, box_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+                    placeholder="Kosongkan untuk auto = Reference"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Biarkan kosong untuk menggunakan Reference sebagai Box ID
+                  </p>
+                </div>
+              </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Box Number
-            </label>
-            <input
-              type="text"
-              value={createForm.box_number || ''}
-              onChange={(e) => setCreateForm({ ...createForm, box_number: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
-              placeholder="Kosongkan untuk auto = Reference"
-            />
-            <p className="text-[10px] text-slate-400 mt-1">
-              Biarkan kosong untuk menggunakan Reference sebagai Box Number
-            </p>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Weight (kg)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={createForm.weight}
-              onChange={(e) => setCreateForm({ ...createForm, weight: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
-              placeholder="15.5"
-            />
-          </div>
-        </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    Box Number
+                  </label>
+                  <input
+                    type="text"
+                    value={createForm.box_number || ''}
+                    onChange={(e) => setCreateForm({ ...createForm, box_number: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+                    placeholder="Kosongkan untuk auto = Reference"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Biarkan kosong untuk menggunakan Reference sebagai Box Number
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    Weight (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={createForm.weight}
+                    onChange={(e) => setCreateForm({ ...createForm, weight: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+                    placeholder="15.5"
+                  />
+                </div>
+              </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Volume (m³)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={createForm.volume}
-              onChange={(e) => setCreateForm({ ...createForm, volume: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
-              placeholder="0.5"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Site
-            </label>
-            <input
-              type="text"
-              value={createForm.site}
-              onChange={(e) => setCreateForm({ ...createForm, site: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
-              placeholder="ST00010"
-            />
-          </div>
-        </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    Volume (m³)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={createForm.volume}
+                    onChange={(e) => setCreateForm({ ...createForm, volume: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+                    placeholder="0.5"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    Site
+                  </label>
+                  <input
+                    type="text"
+                    value={createForm.site}
+                    onChange={(e) => setCreateForm({ ...createForm, site: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+                    placeholder="ST00010"
+                  />
+                </div>
+              </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-            Store Name
-          </label>
-          <input
-            type="text"
-            value={createForm.store_name}
-            onChange={(e) => setCreateForm({ ...createForm, store_name: e.target.value })}
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
-            placeholder="SUMATERA"
-          />
-          <p className="text-[10px] text-slate-400 mt-1">
-            Akan auto-fill jika site terdaftar di master store
-          </p>
-        </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                  Store Name
+                </label>
+                <input
+                  type="text"
+                  value={createForm.store_name}
+                  onChange={(e) => setCreateForm({ ...createForm, store_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+                  placeholder="SUMATERA"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Akan auto-fill jika site terdaftar di master store
+                </p>
+              </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-            Address
-          </label>
-          <input
-            type="text"
-            value={createForm.address}
-            onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })}
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
-            placeholder="JL. SUMATERA"
-          />
-        </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                  Address
+                </label>
+                <input
+                  type="text"
+                  value={createForm.address}
+                  onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+                  placeholder="JL. SUMATERA"
+                />
+              </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              City
-            </label>
-            <input
-              type="text"
-              value={createForm.city}
-              onChange={(e) => setCreateForm({ ...createForm, city: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
-              placeholder="BANDUNG"
-            />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    City
+                  </label>
+                  <input
+                    type="text"
+                    value={createForm.city}
+                    onChange={(e) => setCreateForm({ ...createForm, city: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+                    placeholder="BANDUNG"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    Province
+                  </label>
+                  <input
+                    type="text"
+                    value={createForm.province}
+                    onChange={(e) => setCreateForm({ ...createForm, province: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+                    placeholder="JAWA BARAT"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                  Brand
+                </label>
+                <input
+                  type="text"
+                  value={createForm.brand}
+                  onChange={(e) => setCreateForm({ ...createForm, brand: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+                  placeholder="BODYPAK / EXPORT"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Brand/merek produk (opsional)
+                </p>
+              </div>
+              <div className="flex gap-3 pt-2 border-t border-slate-200">
+                <button
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleCreateBox}
+                  className="flex-1 px-4 py-2 bg-[#0B2B4A] hover:bg-[#123a5e] text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  Buat Box
+                </button>
+              </div>
+            </div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Province
-            </label>
-            <input
-              type="text"
-              value={createForm.province}
-              onChange={(e) => setCreateForm({ ...createForm, province: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
-              placeholder="JAWA BARAT"
-            />
-          </div>
         </div>
-
-        {/* 🔥 TAMBAHKAN FIELD BRAND DI SINI */}
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-            Brand
-          </label>
-          <input
-            type="text"
-            value={createForm.brand}
-            onChange={(e) => setCreateForm({ ...createForm, brand: e.target.value })}
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
-            placeholder="BODYPAK / EXPORT"
-          />
-          <p className="text-[10px] text-slate-400 mt-1">
-            Brand/merek produk (opsional)
-          </p>
-        </div>
-        <div className="flex gap-3 pt-2 border-t border-slate-200">
-          <button
-            onClick={() => setIsCreateModalOpen(false)}
-            className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-          >
-            Batal
-          </button>
-          <button
-            onClick={handleCreateBox}
-            className="flex-1 px-4 py-2 bg-[#0B2B4A] hover:bg-[#123a5e] text-white rounded-lg text-sm font-medium transition-colors"
-          >
-            Buat Box
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
     </div>
   );
 }

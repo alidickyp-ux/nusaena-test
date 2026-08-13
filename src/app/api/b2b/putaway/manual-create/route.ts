@@ -26,16 +26,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 🔥 Jika box_id tidak diisi, gunakan reference sebagai box_id
-    // 🔥 Jika box_number tidak diisi, gunakan reference sebagai box_number
     const finalBoxId = (box_id && box_id.trim() !== '') ? box_id.trim() : reference;
-    // 🔥 Kolom box_number di DB sekarang VARCHAR(50) (disamakan dengan
-    // lebar kolom reference). Tetap dipotong sebagai jaring pengaman kalau
-    // suatu saat ada input yang lebih panjang dari itu.
     const finalBoxNumber = ((box_number && box_number.trim() !== '') ? box_number.trim() : reference).slice(0, 50);
 
-    // 🔥 Ambil data store dari master_store berdasarkan site — kalau
-    // ketemu, address/store_name/city/province auto-fill.
     const cleanSite = (site && site.trim() !== '') ? site.trim() : null;
     let store = {};
     if (cleanSite) {
@@ -48,7 +41,6 @@ export async function POST(request: NextRequest) {
       store = storeData[0] || {};
     }
 
-    // 🔥 Gunakan nilai dari form jika ada, fallback ke store data, atau null
     const finalStoreName = (store_name && store_name.trim() !== '') 
       ? store_name.trim() 
       : (store as any).store_name || null;
@@ -107,6 +99,73 @@ export async function POST(request: NextRequest) {
     console.error('Error creating manual putaway:', error);
     return NextResponse.json(
       { success: false, message: 'Failed to create putaway entry' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+    if (!sessionToken) {
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+    }
+
+    const userSession = await verifySession(sessionToken);
+    if (!userSession) {
+      return NextResponse.json({ success: false, message: 'Invalid session' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    const reference = searchParams.get('reference');
+
+    if (!id && !reference) {
+      return NextResponse.json(
+        { success: false, message: 'Parameter id atau reference wajib disertakan' },
+        { status: 400 }
+      );
+    }
+
+    let result;
+
+    if (id) {
+      result = await sql`
+        UPDATE b2b_putaway
+        SET deleted_at = NOW()
+        WHERE id = ${id}::UUID
+        AND deleted_at IS NULL
+        RETURNING id, reference, loading_status
+      `;
+    } else {
+      result = await sql`
+        UPDATE b2b_putaway
+        SET deleted_at = NOW()
+        WHERE reference = ${reference}
+        AND delivery_number IS NULL
+        AND loading_status = 'staging'
+        AND deleted_at IS NULL
+        RETURNING id, reference, loading_status
+      `;
+    }
+
+    if (result.length === 0) {
+      return NextResponse.json(
+        { success: false, message: 'Data tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `✅ ${result.length} data berhasil dihapus`,
+      data: result,
+    });
+
+  } catch (error) {
+    console.error('Error soft deleting putaway:', error);
+    return NextResponse.json(
+      { success: false, message: 'Gagal menghapus data' },
       { status: 500 }
     );
   }
