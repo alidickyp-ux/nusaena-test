@@ -30,9 +30,13 @@ export async function GET(
     // yang match, jadi reference itu langsung hilang dari daftar, bukan tampil
     // dengan status selesai. Sekarang filter dipindah ke tingkat reference (HAVING),
     // dan agregat dihitung dari SEMUA baris reference tsb, bukan hanya yang staging.
+    // 🔥 AND deleted_at IS NULL ditambahkan supaya box yang sudah di-soft-delete
+    // (via fitur hapus reference tanpa DN) tidak ikut terhitung di sini.
     const references = await sql`
       SELECT 
         reference,
+        MAX(site) as site,
+        MAX(store_name) as store_name,
         COUNT(*) as total_box,
         COALESCE(SUM(weight::DECIMAL), 0) as total_weight,
         COUNT(CASE WHEN loading_status = 'loading_complete' THEN 1 END) as loaded_box,
@@ -40,6 +44,7 @@ export async function GET(
         MIN(putaway_at) as putaway_at
       FROM b2b_putaway
       WHERE delivery_number IS NULL
+        AND deleted_at IS NULL
         AND (
           vendor_name IS NULL 
           OR vendor_name = ${vendor}

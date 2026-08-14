@@ -17,6 +17,8 @@ interface Vendor {
 
 interface ReferenceData {
   reference: string;
+  site?: string | null;
+  store_name?: string | null;
   total_box: number;
   total_weight: number;
   loaded_box: number;
@@ -735,6 +737,14 @@ export default function B2BLoadingPage() {
                               </span>
                             )}
                           </p>
+                          {/* 🔥 Site & Store Name */}
+                          {(ref.site || ref.store_name) && (
+                            <p className="text-xs text-stone-500 mt-0.5">
+                              {ref.site && <span className="font-mono">{ref.site}</span>}
+                              {ref.site && ref.store_name && " · "}
+                              {ref.store_name && <span>{ref.store_name}</span>}
+                            </p>
+                          )}
                           <p className="text-xs text-stone-400">
                             {ref.total_box} box · {ref.total_weight}kg
                           </p>

@@ -1203,6 +1203,9 @@ export default function B2BManifestListPage() {
                       Reference
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Store
+                    </th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       Loading At
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -1222,13 +1225,13 @@ export default function B2BManifestListPage() {
                 <tbody className="divide-y divide-slate-100">
                   {loadingWithDn ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-slate-500 text-sm">
+                      <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
                         Loading...
                       </td>
                     </tr>
                   ) : withDnRefs.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-slate-500 text-sm">
+                      <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
                         {searchTerm ? "Tidak ada reference yang sesuai" : "Belum ada reference"}
                       </td>
                     </tr>
@@ -1242,6 +1245,9 @@ export default function B2BManifestListPage() {
                         </td>
                         <td className="px-4 py-3">
                           <span className="font-mono font-bold text-sm text-slate-800">{ref.reference}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          {ref.store_name || "-"}
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-500">
                           {formatDate(ref.loading_date || null)}

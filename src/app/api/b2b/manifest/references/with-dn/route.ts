@@ -24,8 +24,15 @@ export async function GET(request: NextRequest) {
     const pattern = `%${search}%`;
 
     // 🔥 Search & pagination dilakukan di level SQL, bukan di client
+    // 🔥 LEFT JOIN ke b2b_putaway (aggregated) untuk ambil store_name berdasarkan reference yang sama
     const rows = await sql`
-      WITH base AS (
+      WITH putaway_agg AS (
+        SELECT reference, MAX(store_name) as store_name, MAX(site) as site
+        FROM b2b_putaway
+        WHERE deleted_at IS NULL
+        GROUP BY reference
+      ),
+      base AS (
         SELECT 
           mr.id,
           mr.manifest_id,
@@ -38,14 +45,18 @@ export async function GET(request: NextRequest) {
           mo.delivery_number,
           mo.vendor_name,
           mo.loading_date,
-          TRUE as has_dn
+          TRUE as has_dn,
+          pa.store_name,
+          pa.site
         FROM manifest_reference mr
         INNER JOIN manifest_order mo ON mo.id = mr.manifest_id
+        LEFT JOIN putaway_agg pa ON pa.reference = mr.reference
         WHERE (
           mo.delivery_number ILIKE ${pattern} OR
           mr.reference ILIKE ${pattern} OR
           mr.resi_number ILIKE ${pattern} OR
-          mr.delivered_status ILIKE ${pattern}
+          mr.delivered_status ILIKE ${pattern} OR
+          pa.store_name ILIKE ${pattern}
         )
       )
       SELECT *, COUNT(*) OVER() as total_count
