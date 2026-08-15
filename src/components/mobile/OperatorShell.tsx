@@ -1,6 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { OrientationLock } from '@/components/providers/OrientationLock';
+import LandscapeGuard from '@/components/mobile/LandscapeGuard';
 
 export default function OperatorShell({ 
   children 
@@ -16,6 +18,16 @@ export default function OperatorShell({
 
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col max-w-md mx-auto">
+      {/* 🔥 Coba kunci orientasi portrait secara aktif (komponen yang sudah
+          ada di project — re-lock otomatis tiap ada orientationchange).
+          Kalau ini sudah dipasang secara global (mis. di root layout /
+          Providers.tsx), baris ini boleh dihapus supaya tidak dobel. */}
+      <OrientationLock />
+
+      {/* 🔥 Fallback: overlay peringatan kalau device tetap landscape
+          (mis. Zebra TC2x yang override rotasi di level OS/MX) */}
+      <LandscapeGuard />
+
       {/* Header */}
       <div className="bg-white px-4 py-3 flex justify-between items-center border-b border-stone-200">
         <div className="flex items-center gap-2">

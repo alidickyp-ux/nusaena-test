@@ -706,7 +706,11 @@ export default function B2BManifestDetailPage() {
                       key={row.box_id || idx}
                       className="grid grid-cols-5 gap-2 text-xs bg-slate-50 rounded-lg p-2"
                     >
-                      <div>
+                      {/* 🔥 min-w-0 di tiap kolom grid: tanpa ini, grid item defaultnya
+                          min-width: auto, jadi konten (mis. nama toko yang panjang)
+                          melebar ke luar track dan menimpa kolom sebelah, bukan
+                          terpotong oleh `truncate`. */}
+                      <div className="min-w-0">
                         <span className="text-slate-400 block text-[9px] font-medium uppercase tracking-wider">
                           Box ID
                         </span>
@@ -714,7 +718,7 @@ export default function B2BManifestDetailPage() {
                           {row.box_id}
                         </span>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <span className="text-slate-400 block text-[9px] font-medium uppercase tracking-wider">
                           Berat
                         </span>
@@ -722,15 +726,18 @@ export default function B2BManifestDetailPage() {
                           {row.weight} kg
                         </span>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <span className="text-slate-400 block text-[9px] font-medium uppercase tracking-wider">
                           Toko
                         </span>
-                        <span className="text-slate-700 text-[11px] truncate">
+                        {/* 🔥 Tanpa `truncate` — teks panjang wrap otomatis ke baris
+                            baru di dalam kolomnya sendiri (min-w-0 di parent yang
+                            bikin ini bekerja dengan benar di dalam grid) */}
+                        <span className="text-slate-700 text-[11px] break-words">
                           {row.store_name || "-"}
                         </span>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <span className="text-slate-400 block text-[9px] font-medium uppercase tracking-wider">
                           Driver
                         </span>
@@ -738,7 +745,7 @@ export default function B2BManifestDetailPage() {
                           {row.driver || "-"}
                         </span>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <span className="text-slate-400 block text-[9px] font-medium uppercase tracking-wider">
                           No. Polisi
                         </span>
