@@ -28,6 +28,7 @@ interface ManifestData {
   signed_at: string;
   courier_signature: string | null;   // ← tambahin
   security_signature: string | null;  // ← tambahin
+  courier_photo_url: string | null;
 }
 
 interface HistoryLog {
@@ -196,6 +197,20 @@ export default function ManifestDetailPage() {
           </p>
         </div>
       </div>
+
+      {/* Foto Kurir */}
+      {manifest.courier_photo_url && (
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-2">
+            Foto Kurir (Bukti Handover)
+          </p>
+          <img
+            src={manifest.courier_photo_url}
+            alt="Foto Kurir"
+            className="w-full max-w-xs rounded-lg border border-slate-200 object-cover"
+          />
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">

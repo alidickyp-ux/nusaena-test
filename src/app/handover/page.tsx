@@ -48,6 +48,10 @@ export default function HandoverPage() {
   const [showSecuritySignature, setShowSecuritySignature] = useState(false);
   const [courierSignature, setCourierSignature] = useState("");
   const [securitySignature, setSecuritySignature] = useState("");
+
+  // Di bagian state yang sudah ada upload cloudinary
+const [courierPhotoUrl, setCourierPhotoUrl] = useState("");
+const [uploadingPhoto, setUploadingPhoto] = useState(false);
   
   // Mode & Flow
   const [step, setStep] = useState<"select" | "mode" | "trust" | "verify" | "complete">("select");
@@ -241,6 +245,41 @@ export default function HandoverPage() {
       setLoading(false);
     }
   };
+
+  // upload foto
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  // Validasi ukuran (opsional)
+  if (file.size > 10 * 1024 * 1024) {
+    showToast.error("Ukuran foto maksimal 10MB");
+    return;
+  }
+
+  setUploadingPhoto(true);
+  try {
+    const formData = new FormData();
+    formData.append('photo', file);
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.success) {
+      setCourierPhotoUrl(data.secure_url);
+      showToast.success("✅ Foto berhasil diupload");
+    } else {
+      showToast.error(data.error || "Upload gagal");
+    }
+  } catch (error) {
+    showToast.error("Error upload foto");
+  } finally {
+    setUploadingPhoto(false);
+    // Reset input agar bisa pilih foto lagi
+    e.target.value = '';
+  }
+};
 
   // Pilih mode
   const handleSelectMode = (selectedMode: "trust" | "verify") => {
@@ -565,6 +604,7 @@ const handleMarkFromSearch = async (barcode: string, reason: "NOT_FOUND" | "CANC
         vehicle_number: vehicleNumber,
         courier_signature: courierSignature,
         security_signature: securitySignature,
+        courier_photo_url: courierPhotoUrl,
       };
 
       if (mode === "verify" && Object.keys(discrepancyReasons).length > 0) {
@@ -1221,6 +1261,51 @@ const handleMarkFromSearch = async (barcode: string, reason: "NOT_FOUND" | "CANC
                   className="w-full px-4 py-2.5 bg-white border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-orange-500 uppercase"
                 />
               </div>
+
+            
+              <div>
+              <label className="block text-xs font-bold text-stone-600 uppercase tracking-wider mb-1">
+                Foto Kurir (Bukti Handover)
+              </label>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('photoInput')?.click()}
+                  className="px-4 py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold rounded-xl text-sm transition-colors"
+                  disabled={uploadingPhoto}
+                >
+                  {uploadingPhoto ? "⏳ Uploading..." : "📸 Ambil Foto"}
+                </button>
+                <input
+                  id="photoInput"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handlePhotoUpload}
+                  disabled={uploadingPhoto}
+                  className="hidden"
+                />
+                {courierPhotoUrl && (
+                  <div className="relative inline-block">
+                    <img
+                      src={courierPhotoUrl}
+                      alt="Foto Kurir"
+                      className="w-16 h-16 object-cover rounded-lg border border-stone-300"
+                    />
+                    <button
+                      onClick={() => setCourierPhotoUrl("")}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center shadow"
+                      type="button"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+              </div>
+              <p className="text-[10px] text-stone-400 mt-1">
+                Foto akan diambil langsung dari kamera HP (opsional)
+              </p>
+            </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
       courier_signature,
       security_signature,
       discrepancy_reasons,
+      courier_photo_url,
     } = body;
 
     // 3. Validasi input
@@ -140,30 +141,32 @@ export async function POST(request: NextRequest) {
 
         // 4. Insert manifest
         await sql`
-          INSERT INTO handover_manifests (
-            session_id,
-            courier_name,
-            security_name,
-            vehicle_number,
-            courier_signature,
-            security_signature,
-            total_packages_handed,
-            total_discrepancy,
-            handover_by,
-            signed_at
-          ) VALUES (
-            ${session_id}::UUID,
-            ${courier_name},
-            ${security_name},
-            ${vehicle_number},
-            ${courier_signature},
-            ${security_signature},
-            ${totalPackages[0].count},
-            0,
-            ${session.sub}::UUID,
-            NOW()
-          )
-        `;
+        INSERT INTO handover_manifests (
+          session_id,
+          courier_name,
+          security_name,
+          vehicle_number,
+          courier_signature,
+          security_signature,
+          total_packages_handed,
+          total_discrepancy,
+          handover_by,
+          signed_at,
+          courier_photo_url
+        ) VALUES (
+          ${session_id}::UUID,
+          ${courier_name},
+          ${security_name},
+          ${vehicle_number},
+          ${courier_signature},
+          ${security_signature},
+          ${totalPackages[0].count},
+          0,
+          ${session.sub}::UUID,
+          NOW(),
+          ${courier_photo_url || null}
+        )
+      `;
 
         // 5. Close session
         await sql`
@@ -258,30 +261,32 @@ export async function POST(request: NextRequest) {
 
         // Step 5: Insert manifest
         await sql`
-          INSERT INTO handover_manifests (
-            session_id,
-            courier_name,
-            security_name,
-            vehicle_number,
-            courier_signature,
-            security_signature,
-            total_packages_handed,
-            total_discrepancy,
-            handover_by,
-            signed_at
-          ) VALUES (
-            ${session_id}::UUID,
-            ${courier_name},
-            ${security_name},
-            ${vehicle_number},
-            ${courier_signature},
-            ${security_signature},
-            ${stats[0].total},
-            ${totalDiscrepancy},
-            ${session.sub}::UUID,
-            NOW()
-          )
-        `;
+        INSERT INTO handover_manifests (
+          session_id,
+          courier_name,
+          security_name,
+          vehicle_number,
+          courier_signature,
+          security_signature,
+          total_packages_handed,
+          total_discrepancy,
+          handover_by,
+          signed_at,
+          courier_photo_url
+        ) VALUES (
+          ${session_id}::UUID,
+          ${courier_name},
+          ${security_name},
+          ${vehicle_number},
+          ${courier_signature},
+          ${security_signature},
+          ${stats[0].total},
+          ${totalDiscrepancy},
+          ${session.sub}::UUID,
+          NOW(),
+          ${courier_photo_url || null}
+        )
+      `;
 
         // Step 6: Close session
         await sql`

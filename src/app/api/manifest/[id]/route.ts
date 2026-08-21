@@ -54,6 +54,7 @@ export async function GET(
         hm.signed_at,
         hm.courier_signature,
         hm.security_signature,
+        hm.courier_photo_url,
         ss.session_code,
         mt.transporter_name,
         u.full_name as operator_name
