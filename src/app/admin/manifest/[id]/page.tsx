@@ -9,7 +9,8 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  Package
+  Package,
+  Download 
 } from "lucide-react";
 import showToast, { withToast } from '@/lib/toast';
 import ManifestPrint from "@/components/admin/ManifestPrint";
@@ -199,18 +200,29 @@ export default function ManifestDetailPage() {
       </div>
 
       {/* Foto Kurir */}
-      {manifest.courier_photo_url && (
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-2">
-            Foto Kurir (Bukti Handover)
-          </p>
-          <img
-            src={manifest.courier_photo_url}
-            alt="Foto Kurir"
-            className="w-full max-w-xs rounded-lg border border-slate-200 object-cover"
-          />
-        </div>
-      )}
+{manifest.courier_photo_url && (
+  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+    <div className="flex items-center justify-between mb-2">
+      <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">
+        Foto Kurir (Bukti Handover)
+      </p>
+      <a
+        href={manifest.courier_photo_url}
+        download
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-medium rounded-lg transition-colors"
+      >
+        <Download className="w-3.5 h-3.5" />
+        Download
+      </a>
+    </div>
+    <img
+      src={manifest.courier_photo_url}
+      alt="Foto Kurir"
+      className="w-full max-w-xs rounded-lg border border-slate-200 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+      onClick={() => window.open(manifest.courier_photo_url!, '_blank')}
+    />
+  </div>
+)}
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
