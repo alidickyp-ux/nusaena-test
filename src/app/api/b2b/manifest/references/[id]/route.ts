@@ -23,6 +23,7 @@ export async function PUT(
     const body = await request.json();
     const { 
       resi_number, 
+      invoice_number,
       arrive_date,
       site,
       store_name,
@@ -31,11 +32,11 @@ export async function PUT(
       province,
     } = body;
 
-    // 🔥 1. Update manifest_reference
     const result = await sql`
       UPDATE manifest_reference
       SET 
         resi_number = ${resi_number || null},
+        invoice_number = ${invoice_number || null},
         arrive_date = ${arrive_date ? new Date(arrive_date) : null},
         delivered_status = ${arrive_date ? 'arrived' : 'on_shipping'},
         updated_at = NOW()
@@ -50,7 +51,6 @@ export async function PUT(
       );
     }
 
-    // 🔥 2. Update b2b_putaway untuk semua box dengan reference yang sama
     const manifestRef = result[0];
     if (manifestRef.reference) {
       await sql`

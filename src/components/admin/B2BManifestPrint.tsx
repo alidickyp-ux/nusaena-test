@@ -57,8 +57,8 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
       })
     : "-";
 
-  // Group details by reference for summary
-  const referenceSummary = details.reduce((acc, d) => {
+  // Group details by reference
+  const referenceSummaryMap = details.reduce((acc, d) => {
     if (!acc[d.reference]) {
       acc[d.reference] = {
         store_name: d.store_name,
@@ -70,6 +70,15 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
     acc[d.reference].total_weight += parseFloat(d.weight || "0");
     return acc;
   }, {} as Record<string, { store_name: string; total_box: number; total_weight: number }>);
+
+  // Ubah ke array dan urutkan berdasarkan store_name
+  const referenceSummary = Object.entries(referenceSummaryMap).map(([reference, data]) => ({
+    reference,
+    store_name: data.store_name,
+    total_box: data.total_box,
+    total_weight: data.total_weight,
+  }));
+  referenceSummary.sort((a, b) => a.store_name.localeCompare(b.store_name));
 
   const SignatureCard = ({
     label,
@@ -129,7 +138,7 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
         body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .print-page {
           width: 210mm;
-          min-height: 297mm;
+          height: 297mm; /* ← tinggi tetap agar footer selalu di bawah */
           padding: 15mm;
           display: flex;
           flex-direction: column;
@@ -138,12 +147,12 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
         }
         .print-page:last-child { page-break-after: auto; }
         .print-body {
-          flex: 1; /* 🔥 Mengisi ruang kosong sehingga footer terdorong ke bawah */
+          flex: 1; /* mengisi ruang kosong */
           display: flex;
           flex-direction: column;
         }
         .print-footer {
-          margin-top: auto; /* 🔥 Dorong ke bagian bawah halaman */
+          margin-top: auto; /* dorong ke bawah */
           page-break-inside: avoid;
         }
         .note-list {
@@ -168,7 +177,7 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
 
         return (
           <div key={pageIndex} className="print-page">
-            {/* Header - selalu di atas */}
+            {/* Header */}
             <div className="text-center mb-4">
               <h1 className="text-2xl font-bold uppercase tracking-wide">SURAT JALAN</h1>
               <div className="flex items-center justify-center gap-3 mt-1">
@@ -184,12 +193,11 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
               <div className="border-b-2 border-gray-800 mt-3"></div>
             </div>
 
-            {/* 🔥 Konten utama - flex:1 agar mengisi ruang */}
+            {/* Konten utama */}
             <div className="print-body">
-              {/* Info boxes hanya di halaman pertama */}
               {pageIndex === 0 && (
                 <div className="grid grid-cols-2 gap-4 mb-4">
-                  {/* KIRI: Informasi Operasional */}
+                  {/* KIRI */}
                   <div className="border border-gray-200 rounded-lg p-3">
                     <p className="text-xs font-bold text-black-500 uppercase tracking-wide mb-2">
                       Informasi Operasional
@@ -222,7 +230,7 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
                     </table>
                   </div>
 
-                  {/* KANAN: Informasi Pengiriman */}
+                  {/* KANAN */}
                   <div className="border border-gray-200 rounded-lg p-3">
                     <p className="text-xs font-bold text-black-500 uppercase tracking-wide mb-2">
                       Informasi Pengiriman
@@ -255,32 +263,35 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
                 </div>
               )}
 
-              {/* Tabel Rekap */}
+              {/* Tabel Rekap - dengan kolom Paraf */}
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="bg-gray-100">
                     <th className="border border-gray-200 px-2 py-1 text-left">Reference</th>
                     <th className="border border-gray-200 px-2 py-1 text-left">Nama Toko</th>
                     <th className="border border-gray-200 px-2 py-1 text-center">Total Box / Coly</th>
+                    <th className="border border-gray-200 px-2 py-1 text-center">Paraf</th>
                     <th className="border border-gray-200 px-2 py-1 text-center">Total Berat (kg)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(referenceSummary).map(([reference, data]) => (
+                  {referenceSummary.map(({ reference, store_name, total_box, total_weight }) => (
                     <tr key={reference}>
                       <td className="border border-black-200 px-2 py-1 font-mono">{reference}</td>
-                      <td className="border border-black-200 px-2 py-1">{data.store_name}</td>
-                      <td className="border border-black-200 px-2 py-1 text-center font-bold">{data.total_box}</td>
+                      <td className="border border-black-200 px-2 py-1">{store_name}</td>
+                      <td className="border border-black-200 px-2 py-1 text-center font-bold">{total_box}</td>
+                      <td className="border border-black-200 px-2 py-1 text-center"></td> {/* paraf kosong */}
                       <td className="border border-black-200 px-2 py-1 text-center">
-                        {data.total_weight.toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                        {total_weight.toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                       </td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-50 font-bold">
-                    <td colSpan={2} className="border border-gray-200 px-2 py-1 text-right">TOTAL</td>
+                    <td colSpan={2} className="border border-gray-200 px-2 py-1 text-right">TOTAL</td> {/* mencakup Reference & Nama Toko */}
                     <td className="border border-gray-200 px-2 py-1 text-center">{manifest.total_box}</td>
+                    <td className="border border-gray-200 px-2 py-1 text-center"></td> {/* paraf kosong */}
                     <td className="border border-gray-200 px-2 py-1 text-center">
                       {Number(manifest.total_weight).toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                     </td>
@@ -289,7 +300,7 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
               </table>
             </div>
 
-            {/* 🔥 Footer - hanya di halaman terakhir, dengan margin-top: auto */}
+            {/* Footer - hanya di halaman terakhir */}
             {isLastPage && (
               <div className="print-footer pt-4">
                 <div className="border-b-2 border-gray-800 mb-4"></div>
@@ -310,7 +321,6 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
                   <SignatureCard label="PIC / Supervisor" name={null} signature={null} />
                 </div>
 
-                {/* Catatan */}
                 <div className="border-t border-gray-300 pt-3 mt-2">
                   <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Catatan:</p>
                   <ul className="note-list">

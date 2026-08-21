@@ -37,6 +37,7 @@ interface ReferenceData {
   manifest_id: string | null;
   reference: string;
   resi_number: string | null;
+  invoice_number: string | null; // 🔥 INVOICE
   delivered_status: string;
   arrive_date: string | null;
   created_at: string;
@@ -123,6 +124,7 @@ function EditReferenceModal({
   onClose: () => void;
   onSave: (data: {
     resi_number: string | null;
+    invoice_number: string | null; // 🔥 INVOICE
     arrive_date: string | null;
     site: string | null;
     store_name: string | null;
@@ -133,6 +135,7 @@ function EditReferenceModal({
   sites: SiteData[];
 }) {
   const [resiNumber, setResiNumber] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState(""); // 🔥 INVOICE
   const [arriveDate, setArriveDate] = useState("");
   const [selectedSite, setSelectedSite] = useState("");
   const [storeName, setStoreName] = useState("");
@@ -146,6 +149,7 @@ function EditReferenceModal({
     if (!reference) return;
 
     setResiNumber(reference.resi_number || "");
+    setInvoiceNumber(reference.invoice_number || ""); // 🔥 INVOICE
     setArriveDate(
       reference.arrive_date ? new Date(reference.arrive_date).toISOString().split("T")[0] : ""
     );
@@ -186,6 +190,7 @@ function EditReferenceModal({
     try {
       await onSave({
         resi_number: resiNumber.trim() || null,
+        invoice_number: invoiceNumber.trim() || null, // 🔥 INVOICE
         arrive_date: arriveDate || null,
         site: selectedSite || null,
         store_name: storeName || null,
@@ -231,7 +236,8 @@ function EditReferenceModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* 🔥 INVOICE: grid diubah dari 2 kolom jadi 3 kolom */}
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
                 <Hash className="w-3 h-3 inline mr-1" />
@@ -241,7 +247,21 @@ function EditReferenceModal({
                 type="text"
                 value={resiNumber}
                 onChange={(e) => setResiNumber(e.target.value)}
-                placeholder="Masukkan nomor resi (opsional)"
+                placeholder="Nomor resi"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+              />
+            </div>
+            <div>
+              {/* 🔥 INVOICE: input baru */}
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                <Hash className="w-3 h-3 inline mr-1" />
+                No Invoice
+              </label>
+              <input
+                type="text"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                placeholder="Nomor invoice"
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
               />
             </div>
@@ -257,7 +277,7 @@ function EditReferenceModal({
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
               />
               <p className="text-[10px] text-slate-400 mt-1">
-                Kosongkan jika belum tiba · Status akan otomatis berubah menjadi "Arrived" jika diisi
+                Kosongkan jika belum tiba
               </p>
             </div>
           </div>
@@ -352,7 +372,7 @@ function EditReferenceModal({
   );
 }
 
-// 🔥 Popup Edit Ship To (khusus untuk reference tanpa DN)
+// 🔥 Popup Edit Ship To (khusus untuk reference tanpa DN) — TIDAK ADA PERUBAHAN
 function EditShipToModal({
   reference,
   isOpen,
@@ -556,23 +576,20 @@ function EditShipToModal({
 
 export default function B2BManifestListPage() {
   const [manifests, setManifests] = useState<ManifestData[]>([]);
-  // 🔥 Dipakai HANYA untuk tombol print di tab DN Header (ringan, tidak dipaginasi)
   const [referencesByManifest, setReferencesByManifest] = useState<RefByManifest[]>([]);
 
-  // 🔥 Tab "Semua Reference" — pagination & search sendiri
   const [withDnRefs, setWithDnRefs] = useState<ReferenceData[]>([]);
   const [withDnPage, setWithDnPage] = useState(1);
   const [withDnPagination, setWithDnPagination] = useState<PaginationInfo>(EMPTY_PAGINATION);
   const [loadingWithDn, setLoadingWithDn] = useState(true);
 
-  // 🔥 Tab "Tanpa DN" — pagination & search sendiri
   const [noDnRefs, setNoDnRefs] = useState<ReferenceData[]>([]);
   const [noDnPage, setNoDnPage] = useState(1);
   const [noDnPagination, setNoDnPagination] = useState<PaginationInfo>(EMPTY_PAGINATION);
   const [loadingNoDn, setLoadingNoDn] = useState(true);
 
   const [sites, setSites] = useState<SiteData[]>([]);
-  const [loading, setLoading] = useState(true); // loading manifest (tab 1)
+  const [loading, setLoading] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -585,7 +602,6 @@ export default function B2BManifestListPage() {
   const [editingShipToRef, setEditingShipToRef] = useState<ReferenceData | null>(null);
   const [isShipToModalOpen, setIsShipToModalOpen] = useState(false);
 
-  // 🔥 State untuk create modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
@@ -602,31 +618,26 @@ export default function B2BManifestListPage() {
     province: '',
   });
 
-  // 🔥 Debounce search: tunggu 400ms setelah user berhenti mengetik
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm), 400);
     return () => clearTimeout(t);
   }, [searchTerm]);
 
-  // 🔥 Reset ke halaman 1 setiap kali search berubah
   useEffect(() => {
     setWithDnPage(1);
     setNoDnPage(1);
   }, [debouncedSearch]);
 
-  // Initial load: manifest, referensi ringan untuk tombol print, dan sites
   useEffect(() => {
     fetchManifests();
     fetchReferencesByManifest();
     fetchSites();
   }, []);
 
-  // Fetch tab "Semua Reference" setiap kali halaman atau search berubah
   useEffect(() => {
     fetchWithDn();
   }, [withDnPage, debouncedSearch]);
 
-  // Fetch tab "Tanpa DN" setiap kali halaman atau search berubah
   useEffect(() => {
     fetchNoDn();
   }, [noDnPage, debouncedSearch]);
@@ -721,7 +732,6 @@ export default function B2BManifestListPage() {
     }
   };
 
-  // 🔥 Refresh semua data sekaligus (dipakai setelah create/edit/delete & tombol Refresh)
   const fetchData = async () => {
     await Promise.all([
       fetchManifests(),
@@ -733,6 +743,7 @@ export default function B2BManifestListPage() {
 
   const handleSaveReference = async (data: {
     resi_number: string | null;
+    invoice_number: string | null; // 🔥 INVOICE
     arrive_date: string | null;
     site: string | null;
     store_name: string | null;
@@ -801,7 +812,6 @@ export default function B2BManifestListPage() {
     }
   };
 
-  // 🔥 handleCreateBox
   const handleCreateBox = async () => {
     try {
       const res = await fetch('/api/b2b/putaway/manual-create', {
@@ -875,7 +885,6 @@ export default function B2BManifestListPage() {
     window.open(`/print/b2b-label/reference/${encodeURIComponent(reference)}`, "_blank");
   };
 
-  // Filter untuk DN Header (client-side, list manifest biasanya kecil)
   const filteredManifests = manifests.filter((m) => {
     const search = searchTerm.trim().toLowerCase();
     const dn = (m.delivery_number || "").toLowerCase();
@@ -921,6 +930,7 @@ export default function B2BManifestListPage() {
         "Vendor",
         "Reference",
         "Resi Number",
+        "Invoice Number", 
         "Status",
         "Loading Date",
         "Arrive Date",
@@ -947,6 +957,7 @@ export default function B2BManifestListPage() {
         row.vendor_name || "",
         row.reference || "",
         row.resi_number || "",
+        row.invoice_number || "",
         row.delivered_status || "",
         row.loading_date ? new Date(row.loading_date).toLocaleString("id-ID") : "",
         row.arrive_date ? new Date(row.arrive_date).toLocaleString("id-ID") : "",
@@ -1028,7 +1039,7 @@ export default function B2BManifestListPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Cari DN Number, Reference, atau Resi..."
+            placeholder="Cari DN Number, Reference, Resi, atau Invoice..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent transition-all"
@@ -1077,7 +1088,7 @@ export default function B2BManifestListPage() {
         </div>
 
         <div className="p-4">
-          {/* TAB 1: DN HEADER */}
+          {/* TAB 1: DN HEADER — TIDAK ADA PERUBAHAN */}
           {activeTab === "dn" && (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -1190,34 +1201,37 @@ export default function B2BManifestListPage() {
             </div>
           )}
 
-          {/* TAB 2: SEMUA REFERENCE */}
+          {/* TAB 2: SEMUA REFERENCE — 🔥 INVOICE: kolom baru + font dikecilkan */}
           {activeTab === "references" && (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       DN Number
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       Reference
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       Store
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       Loading At
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       Arrived At
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       No Resi
                     </th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      No Invoice
+                    </th>
+                    <th className="text-right px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       Aksi
                     </th>
                   </tr>
@@ -1225,51 +1239,55 @@ export default function B2BManifestListPage() {
                 <tbody className="divide-y divide-slate-100">
                   {loadingWithDn ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
+                      <td colSpan={9} className="px-4 py-8 text-center text-slate-500 text-sm">
                         Loading...
                       </td>
                     </tr>
                   ) : withDnRefs.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
+                      <td colSpan={9} className="px-4 py-8 text-center text-slate-500 text-sm">
                         {searchTerm ? "Tidak ada reference yang sesuai" : "Belum ada reference"}
                       </td>
                     </tr>
                   ) : (
                     withDnRefs.map((ref) => (
                       <tr key={ref.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3">
-                          <span className="font-mono text-sm text-slate-700">
+                        <td className="px-3 py-3">
+                          <span className="font-mono text-xs text-slate-700">
                             {ref.delivery_number || "-"}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="font-mono font-bold text-sm text-slate-800">{ref.reference}</span>
+                        <td className="px-3 py-3">
+                          <span className="font-mono font-bold text-xs text-slate-800">{ref.reference}</span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-slate-600">
+                        <td className="px-3 py-3 text-xs text-slate-600">
                           {ref.store_name || "-"}
                         </td>
-                        <td className="px-4 py-3 text-xs text-slate-500">
+                        <td className="px-3 py-3 text-xs text-slate-500">
                           {formatDate(ref.loading_date || null)}
                         </td>
-                        <td className="px-4 py-3 text-xs text-slate-500">
+                        <td className="px-3 py-3 text-xs text-slate-500">
                           {formatDateOnly(ref.arrive_date)}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           {ref.delivered_status === "arrived" ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-bold bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
                               <PackageCheck className="w-3 h-3" /> Arrived
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-xs font-bold bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
                               <Truck className="w-3 h-3" /> On Shipping
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="font-mono text-sm">{ref.resi_number || "-"}</span>
+                        <td className="px-3 py-3">
+                          <span className="font-mono text-xs">{ref.resi_number || "-"}</span>
                         </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-3 py-3">
+                          {/* 🔥 INVOICE: cell baru */}
+                          <span className="font-mono text-xs">{ref.invoice_number || "-"}</span>
+                        </td>
+                        <td className="px-3 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => handlePrintLabel(ref.reference)}
@@ -1293,7 +1311,6 @@ export default function B2BManifestListPage() {
                 </tbody>
               </table>
 
-              {/* 🔥 Pagination tab Semua Reference */}
               {withDnPagination.totalPages > 1 && (
                 <div className="flex items-center justify-between px-2 py-3 mt-2 border-t border-slate-100">
                   <span className="text-xs text-slate-500">
@@ -1320,7 +1337,7 @@ export default function B2BManifestListPage() {
             </div>
           )}
 
-          {/* TAB 3: REFERENCE TANPA DN */}
+          {/* TAB 3: REFERENCE TANPA DN — TIDAK ADA PERUBAHAN */}
           {activeTab === "nodn" && (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -1397,7 +1414,6 @@ export default function B2BManifestListPage() {
                 </tbody>
               </table>
 
-              {/* 🔥 Pagination tab Tanpa DN */}
               {noDnPagination.totalPages > 1 && (
                 <div className="flex items-center justify-between px-2 py-3 mt-2 border-t border-slate-100">
                   <span className="text-xs text-slate-500">
@@ -1450,7 +1466,7 @@ export default function B2BManifestListPage() {
         sites={sites}
       />
 
-      {/* 🔥 Modal Create Box */}
+      {/* Modal Create Box — TIDAK ADA PERUBAHAN */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">

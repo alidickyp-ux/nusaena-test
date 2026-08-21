@@ -18,7 +18,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, message: 'Invalid session' }, { status: 401 });
     }
 
-    // 🔥 Ambil semua data putaway dengan JOIN ke manifest_order dan manifest_reference
     const putaways = await sql`
       SELECT 
         bp.id,
@@ -47,6 +46,7 @@ export async function GET(request: NextRequest) {
         mo.total_box,
         mo.total_weight,
         mr.resi_number,
+        mr.invoice_number,
         mr.delivered_status,
         mr.arrive_date
       FROM b2b_putaway bp

@@ -23,8 +23,6 @@ export async function GET(request: NextRequest) {
     const search = (searchParams.get('search') || '').trim();
     const pattern = `%${search}%`;
 
-    // 🔥 Search & pagination dilakukan di level SQL, bukan di client
-    // 🔥 LEFT JOIN ke b2b_putaway (aggregated) untuk ambil store_name berdasarkan reference yang sama
     const rows = await sql`
       WITH putaway_agg AS (
         SELECT reference, MAX(store_name) as store_name, MAX(site) as site
@@ -38,6 +36,7 @@ export async function GET(request: NextRequest) {
           mr.manifest_id,
           mr.reference,
           mr.resi_number,
+          mr.invoice_number,
           mr.delivered_status,
           mr.arrive_date,
           mr.created_at,
@@ -55,6 +54,7 @@ export async function GET(request: NextRequest) {
           mo.delivery_number ILIKE ${pattern} OR
           mr.reference ILIKE ${pattern} OR
           mr.resi_number ILIKE ${pattern} OR
+          mr.invoice_number ILIKE ${pattern} OR
           mr.delivered_status ILIKE ${pattern} OR
           pa.store_name ILIKE ${pattern}
         )
