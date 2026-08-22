@@ -144,6 +144,8 @@ function SortingSessionTab() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "closed">("all");
+  const [exporting, setExporting] = useState(false);
+  const [showExportOptions, setShowExportOptions] = useState(false);
   const [page, setPage] = useState(1);
   const limit = 20;
 
@@ -179,6 +181,40 @@ function SortingSessionTab() {
     setPage(1);
   }, [search, statusFilter]);
 
+  // 🔥 Export Sorting Details
+  const handleExportSorting = async () => {
+    setExporting(true);
+    try {
+      let url = `/api/admin/sorting-details/export`;
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (statusFilter !== 'all') params.append('session_status', statusFilter);
+      if (params.toString()) url += `?${params.toString()}`;
+
+      const res = await fetch(url);
+      if (res.ok) {
+        const blob = await res.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `sorting-details-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(downloadUrl);
+        showToast.success('CSV sorting details berhasil didownload');
+      } else {
+        const error = await res.json();
+        showToast.error(error.message || 'Gagal export');
+      }
+    } catch (error) {
+      showToast.error('Error exporting sorting details');
+    } finally {
+      setExporting(false);
+      setShowExportOptions(false);
+    }
+  };
+
   // Helper untuk render badge source
   const renderSourceBadge = (sourceType: string) => {
     if (sourceType === "instant") {
@@ -199,16 +235,28 @@ function SortingSessionTab() {
 
   // Helper untuk render status handover
   const renderHandoverStatus = (row: SortingDetail) => {
-  if (row.discrepancy_reason) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
-        <AlertCircle className="w-3 h-3" /> {row.discrepancy_reason}
-      </span>
-    );
-  }
-  
-  if (row.source_type === "instant") {
-    if (row.instant_status === "PICKED") {
+    if (row.discrepancy_reason) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+          <AlertCircle className="w-3 h-3" /> {row.discrepancy_reason}
+        </span>
+      );
+    }
+    if (row.source_type === "instant") {
+      if (row.instant_status === "PICKED") {
+        return (
+          <span className="inline-flex items-center gap-1 text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+            <CheckCircle className="w-3 h-3" /> Sudah
+          </span>
+        );
+      }
+      return (
+        <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+          Belum
+        </span>
+      );
+    }
+    if (row.is_validated_handover) {
       return (
         <span className="inline-flex items-center gap-1 text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
           <CheckCircle className="w-3 h-3" /> Sudah
@@ -220,26 +268,10 @@ function SortingSessionTab() {
         Belum
       </span>
     );
-  }
-  
-  if (row.is_validated_handover) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-        <CheckCircle className="w-3 h-3" /> Sudah
-      </span>
-    );
-  }
-  
-  return (
-    <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-      Belum
-    </span>
-  );
-};
+  };
 
   return (
     <div className="space-y-4">
-
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div className="bg-white p-3 rounded-xl border border-slate-200 text-center">
@@ -265,6 +297,7 @@ function SortingSessionTab() {
         </div>
       )}
 
+      {/* 🔥 TOOLBAR dengan tombol Export */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row gap-3">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -276,6 +309,7 @@ function SortingSessionTab() {
             className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
           />
         </div>
+
         <div className="flex gap-2">
           {(["all", "running", "closed"] as const).map((s) => (
             <button
@@ -291,14 +325,42 @@ function SortingSessionTab() {
             </button>
           ))}
         </div>
-        <button
-          onClick={fetchData}
-          className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-        </button>
+
+        {/* 🔥 Tombol Export dengan dropdown */}
+        <div className="flex gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setShowExportOptions(!showExportOptions)}
+              className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium flex items-center gap-1 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Export
+            </button>
+            {showExportOptions && (
+              <div className="absolute right-0 mt-2 bg-white border border-slate-200 rounded-lg shadow-lg z-10 w-48">
+                <button
+                  onClick={handleExportSorting}
+                  disabled={exporting}
+                  className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  <FileText className="w-4 h-4" />
+                  {exporting ? 'Mengexport...' : 'Sorting Details'}
+                </button>
+                {/* Jika nanti mau tambah opsi export lain, tambahkan di sini */}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={fetchData}
+            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
+      {/* Tabel */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -339,9 +401,7 @@ function SortingSessionTab() {
                       <span className="font-mono text-xs text-slate-600">{r.session_code}</span>
                     </td>
                     <td className="px-4 py-2 text-sm text-slate-600">{r.transporter_name || "-"}</td>
-                    <td className="px-4 py-2">
-                      {renderSourceBadge(r.source_type)}
-                    </td>
+                    <td className="px-4 py-2">{renderSourceBadge(r.source_type)}</td>
                     <td className="px-4 py-2">
                       <span
                         className={`text-xs font-bold px-2 py-0.5 rounded-full ${
@@ -353,9 +413,7 @@ function SortingSessionTab() {
                         {r.session_status}
                       </span>
                     </td>
-                    <td className="px-4 py-2">
-                      {renderHandoverStatus(r)}
-                    </td>
+                    <td className="px-4 py-2">{renderHandoverStatus(r)}</td>
                     <td className="px-4 py-2 text-xs text-slate-500">
                       {new Date(r.scanned_at).toLocaleString("id-ID")}
                     </td>
