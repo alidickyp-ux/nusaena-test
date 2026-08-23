@@ -4,15 +4,6 @@ import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// 🔥 FIX PAGINASI: sebelumnya sorting_details dan instant_packages
-// masing-masing di-fetch dengan LIMIT/OFFSET SENDIRI-SENDIRI, lalu
-// digabung dan di-slice lagi pakai offset yang sama. Itu salah secara
-// matematis — begitu pindah halaman, OFFSET diterapkan ke DUA sumber
-// terpisah, bukan ke hasil gabungan yang sudah terurut, jadi baris yang
-// seharusnya tampil di halaman berikutnya malah "hilang" di dua-duanya.
-//
-// Sekarang digabung jadi SATU query pakai UNION ALL, lalu ORDER BY +
-// LIMIT/OFFSET diterapkan SEKALI di database terhadap hasil gabungan.
 export async function GET(request: NextRequest) {
   try {
     const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -32,10 +23,6 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || '';
     const sessionStatus = searchParams.get('session_status'); // 'running' | 'closed' | null
 
-    // instant_packages tidak punya konsep CLOSED (selalu dianggap RUNNING),
-    // jadi kalau filter = 'closed', instant dikecualikan total dari hasil.
-    const includeInstant = sessionStatus !== 'closed';
-
     let rows: any[] = [];
     let total = 0;
 
@@ -50,10 +37,12 @@ export async function GET(request: NextRequest) {
               sd.discrepancy_reason, sd.validated_at,
               ss.session_code, ss.status as session_status,
               COALESCE(mt.transporter_name, '-') as transporter_name,
+              u.full_name as sorting_by_name,
               'sorting' as source_type, NULL::text as instant_status
             FROM sorting_details sd
             JOIN sorting_sessions ss ON ss.id = sd.session_id
             LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+            LEFT JOIN users u ON u.id = sd.sorting_by
             WHERE ss.status = 'CLOSED'
               AND (sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p})
           ) combined
@@ -65,6 +54,7 @@ export async function GET(request: NextRequest) {
           FROM sorting_details sd
           JOIN sorting_sessions ss ON ss.id = sd.session_id
           LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+          LEFT JOIN users u ON u.id = sd.sorting_by
           WHERE ss.status = 'CLOSED'
             AND (sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p})
         `;
@@ -77,10 +67,12 @@ export async function GET(request: NextRequest) {
               sd.discrepancy_reason, sd.validated_at,
               ss.session_code, ss.status as session_status,
               COALESCE(mt.transporter_name, '-') as transporter_name,
+              u.full_name as sorting_by_name,
               'sorting' as source_type, NULL::text as instant_status
             FROM sorting_details sd
             JOIN sorting_sessions ss ON ss.id = sd.session_id
             LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+            LEFT JOIN users u ON u.id = sd.sorting_by
             WHERE ss.status = 'RUNNING'
               AND (sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p})
 
@@ -92,6 +84,7 @@ export async function GET(request: NextRequest) {
               NULL::text as discrepancy_reason, ip.picked_at as validated_at,
               TO_CHAR(ip.putaway_at, '"INST-"YYYY-MM-DD') as session_code,
               'RUNNING' as session_status, 'INSTANT' as transporter_name,
+              NULL::text as sorting_by_name,
               'instant' as source_type, ip.status as instant_status
             FROM instant_packages ip
             WHERE ip.status IN ('STORED', 'PICKED')
@@ -105,6 +98,7 @@ export async function GET(request: NextRequest) {
             (SELECT COUNT(*) FROM sorting_details sd
               JOIN sorting_sessions ss ON ss.id = sd.session_id
               LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+              LEFT JOIN users u ON u.id = sd.sorting_by
               WHERE ss.status = 'RUNNING'
                 AND (sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p}))
             +
@@ -121,10 +115,12 @@ export async function GET(request: NextRequest) {
               sd.discrepancy_reason, sd.validated_at,
               ss.session_code, ss.status as session_status,
               COALESCE(mt.transporter_name, '-') as transporter_name,
+              u.full_name as sorting_by_name,
               'sorting' as source_type, NULL::text as instant_status
             FROM sorting_details sd
             JOIN sorting_sessions ss ON ss.id = sd.session_id
             LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+            LEFT JOIN users u ON u.id = sd.sorting_by
             WHERE sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p}
 
             UNION ALL
@@ -135,6 +131,7 @@ export async function GET(request: NextRequest) {
               NULL::text as discrepancy_reason, ip.picked_at as validated_at,
               TO_CHAR(ip.putaway_at, '"INST-"YYYY-MM-DD') as session_code,
               'RUNNING' as session_status, 'INSTANT' as transporter_name,
+              NULL::text as sorting_by_name,
               'instant' as source_type, ip.status as instant_status
             FROM instant_packages ip
             WHERE ip.status IN ('STORED', 'PICKED')
@@ -148,6 +145,7 @@ export async function GET(request: NextRequest) {
             (SELECT COUNT(*) FROM sorting_details sd
               JOIN sorting_sessions ss ON ss.id = sd.session_id
               LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+              LEFT JOIN users u ON u.id = sd.sorting_by
               WHERE sd.barcode_resi ILIKE ${p} OR ss.session_code ILIKE ${p} OR mt.transporter_name ILIKE ${p})
             +
             (SELECT COUNT(*) FROM instant_packages ip
@@ -165,10 +163,12 @@ export async function GET(request: NextRequest) {
               sd.discrepancy_reason, sd.validated_at,
               ss.session_code, ss.status as session_status,
               COALESCE(mt.transporter_name, '-') as transporter_name,
+              u.full_name as sorting_by_name,
               'sorting' as source_type, NULL::text as instant_status
             FROM sorting_details sd
             JOIN sorting_sessions ss ON ss.id = sd.session_id
             LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+            LEFT JOIN users u ON u.id = sd.sorting_by
             WHERE ss.status = 'CLOSED'
           ) combined
           ORDER BY scanned_at DESC
@@ -178,6 +178,8 @@ export async function GET(request: NextRequest) {
           SELECT COUNT(*) as total
           FROM sorting_details sd
           JOIN sorting_sessions ss ON ss.id = sd.session_id
+          LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+          LEFT JOIN users u ON u.id = sd.sorting_by
           WHERE ss.status = 'CLOSED'
         `;
         total = parseInt(t[0]?.total || '0');
@@ -189,10 +191,12 @@ export async function GET(request: NextRequest) {
               sd.discrepancy_reason, sd.validated_at,
               ss.session_code, ss.status as session_status,
               COALESCE(mt.transporter_name, '-') as transporter_name,
+              u.full_name as sorting_by_name,
               'sorting' as source_type, NULL::text as instant_status
             FROM sorting_details sd
             JOIN sorting_sessions ss ON ss.id = sd.session_id
             LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+            LEFT JOIN users u ON u.id = sd.sorting_by
             WHERE ss.status = 'RUNNING'
 
             UNION ALL
@@ -203,6 +207,7 @@ export async function GET(request: NextRequest) {
               NULL::text as discrepancy_reason, ip.picked_at as validated_at,
               TO_CHAR(ip.putaway_at, '"INST-"YYYY-MM-DD') as session_code,
               'RUNNING' as session_status, 'INSTANT' as transporter_name,
+              NULL::text as sorting_by_name,
               'instant' as source_type, ip.status as instant_status
             FROM instant_packages ip
             WHERE ip.status IN ('STORED', 'PICKED')
@@ -214,6 +219,8 @@ export async function GET(request: NextRequest) {
           SELECT
             (SELECT COUNT(*) FROM sorting_details sd
               JOIN sorting_sessions ss ON ss.id = sd.session_id
+              LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+              LEFT JOIN users u ON u.id = sd.sorting_by
               WHERE ss.status = 'RUNNING')
             +
             (SELECT COUNT(*) FROM instant_packages ip WHERE ip.status IN ('STORED', 'PICKED'))
@@ -228,10 +235,12 @@ export async function GET(request: NextRequest) {
               sd.discrepancy_reason, sd.validated_at,
               ss.session_code, ss.status as session_status,
               COALESCE(mt.transporter_name, '-') as transporter_name,
+              u.full_name as sorting_by_name,
               'sorting' as source_type, NULL::text as instant_status
             FROM sorting_details sd
             JOIN sorting_sessions ss ON ss.id = sd.session_id
             LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+            LEFT JOIN users u ON u.id = sd.sorting_by
 
             UNION ALL
 
@@ -241,6 +250,7 @@ export async function GET(request: NextRequest) {
               NULL::text as discrepancy_reason, ip.picked_at as validated_at,
               TO_CHAR(ip.putaway_at, '"INST-"YYYY-MM-DD') as session_code,
               'RUNNING' as session_status, 'INSTANT' as transporter_name,
+              NULL::text as sorting_by_name,
               'instant' as source_type, ip.status as instant_status
             FROM instant_packages ip
             WHERE ip.status IN ('STORED', 'PICKED')
@@ -251,7 +261,9 @@ export async function GET(request: NextRequest) {
         const t = await sql`
           SELECT
             (SELECT COUNT(*) FROM sorting_details sd
-              JOIN sorting_sessions ss ON ss.id = sd.session_id)
+              JOIN sorting_sessions ss ON ss.id = sd.session_id
+              LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+              LEFT JOIN users u ON u.id = sd.sorting_by)
             +
             (SELECT COUNT(*) FROM instant_packages ip WHERE ip.status IN ('STORED', 'PICKED'))
           as total
@@ -262,9 +274,7 @@ export async function GET(request: NextRequest) {
 
     const totalPages = Math.ceil(total / limit);
 
-    // 🔥 Stats tetap GLOBAL (tidak ikut filter search/status) — sama seperti
-    // pola di tab History Logs, supaya angka di card konsisten mewakili
-    // keseluruhan data, bukan cuma hasil pencarian saat ini.
+    // Stats tetap GLOBAL (tidak ikut filter)
     const sortingStats = await sql`
       SELECT 
         COUNT(*) as total,

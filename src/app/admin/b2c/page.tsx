@@ -68,6 +68,7 @@ interface Manifest {
   transporter_name: string;
   source_type: "sorting" | "instant";
   instant_status?: "STORED" | "PICKED" | null;
+   sorting_by_name?: string | null;
 }
 
 interface SortingStats {
@@ -372,13 +373,14 @@ function SortingSessionTab() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Source</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Sesi</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Handover</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Sorting By</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Scanned At</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500 text-sm">
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-5 h-5 border-2 border-[#0B2B4A] border-t-transparent rounded-full animate-spin"></div>
                       Loading...
@@ -387,7 +389,7 @@ function SortingSessionTab() {
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500 text-sm">
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
                     {search ? "Tidak ada resi yang cocok" : "Belum ada data sorting"}
                   </td>
                 </tr>
@@ -403,17 +405,12 @@ function SortingSessionTab() {
                     <td className="px-4 py-2 text-sm text-slate-600">{r.transporter_name || "-"}</td>
                     <td className="px-4 py-2">{renderSourceBadge(r.source_type)}</td>
                     <td className="px-4 py-2">
-                      <span
-                        className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                          r.session_status === "RUNNING"
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${r.session_status === "RUNNING" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
                         {r.session_status}
                       </span>
                     </td>
                     <td className="px-4 py-2">{renderHandoverStatus(r)}</td>
+                    <td className="px-4 py-2 text-sm text-slate-600">{r.sorting_by_name || '-'}</td>   {/* ✅ tambahkan */}
                     <td className="px-4 py-2 text-xs text-slate-500">
                       {new Date(r.scanned_at).toLocaleString("id-ID")}
                     </td>
