@@ -119,11 +119,11 @@ export default function Sidebar({ children }: SidebarProps) {
           {!collapsed ? (
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 bg-gradient-to-br from-[#E87A2A] to-[#f59e0b] rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-orange-500/25">
-                W
+                N
               </div>
               <div>
-                <h1 className="text-base font-bold text-white">WMS</h1>
-                <p className="text-[9px] text-blue-300/70 tracking-wider">Warehouse System</p>
+                <h1 className="text-base font-bold text-white">Nusaena v1.0</h1>
+                <p className="text-[9px] text-blue-300/70 tracking-wider">Integrated System</p>
               </div>
             </div>
           ) : (
@@ -261,8 +261,8 @@ export default function Sidebar({ children }: SidebarProps) {
               <Menu className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-sm font-semibold text-slate-800">Dashboard</h1>
-              <p className="text-xs text-slate-400">Warehouse Management System</p>
+              <h1 className="text-sm font-bold text-slate-800">Dashboard</h1>
+              <p className="text-xs font-bold text-slate-400">Nusaena v1.0 Handover Management</p>
             </div>
           </div>
 
