@@ -1235,9 +1235,6 @@ export default function B2BManifestListPage() {
                       Reference
                     </th>
                     <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Store
-                    </th>
-                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       Loading At
                     </th>
                     <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -1286,10 +1283,14 @@ export default function B2BManifestListPage() {
                         </div>
                       </td>
                         <td className="px-3 py-3">
-                          <span className="font-mono font-bold text-xs text-slate-800">{ref.reference}</span>
-                        </td>
-                        <td className="px-3 py-3 text-xs text-slate-600">
-                          {ref.store_name || "-"}
+                          <div className="flex flex-col">
+                            <span className="font-mono font-bold text-xs text-slate-800">{ref.reference}</span>
+                            {ref.store_name && (
+                              <span className="text-[10px] text-red-700">
+                                {ref.store_name}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-3 text-xs text-slate-500">
                           {formatDate(ref.loading_date || null)}
