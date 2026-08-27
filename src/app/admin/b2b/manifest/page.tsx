@@ -1253,10 +1253,17 @@ export default function B2BManifestListPage() {
                     withDnRefs.map((ref) => (
                       <tr key={ref.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-3 py-3">
+                        <div className="flex flex-col">
                           <span className="font-mono text-xs text-slate-700">
                             {ref.delivery_number || "-"}
                           </span>
-                        </td>
+                          {ref.vendor_name && (
+                            <span className="font-mono text-xs text-red-700">
+                              {ref.vendor_name}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                         <td className="px-3 py-3">
                           <span className="font-mono font-bold text-xs text-slate-800">{ref.reference}</span>
                         </td>

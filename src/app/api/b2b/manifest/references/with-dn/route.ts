@@ -51,13 +51,14 @@ export async function GET(request: NextRequest) {
         INNER JOIN manifest_order mo ON mo.id = mr.manifest_id
         LEFT JOIN putaway_agg pa ON pa.reference = mr.reference
         WHERE (
-          mo.delivery_number ILIKE ${pattern} OR
-          mr.reference ILIKE ${pattern} OR
-          mr.resi_number ILIKE ${pattern} OR
-          mr.invoice_number ILIKE ${pattern} OR
-          mr.delivered_status ILIKE ${pattern} OR
-          pa.store_name ILIKE ${pattern}
-        )
+        mo.delivery_number ILIKE ${pattern} OR
+        mo.vendor_name ILIKE ${pattern} OR
+        mr.reference ILIKE ${pattern} OR
+        mr.resi_number ILIKE ${pattern} OR
+        mr.invoice_number ILIKE ${pattern} OR
+        mr.delivered_status ILIKE ${pattern} OR
+        pa.store_name ILIKE ${pattern}
+      )
       )
       SELECT *, COUNT(*) OVER() as total_count
       FROM base
