@@ -1001,6 +1001,27 @@ export default function B2BManifestListPage() {
     }
   };
 
+        const getPageNumbers = (current: number, total: number): (number | "...")[] => {
+        const delta = 1; // jumlah halaman di kiri-kanan current page
+        const range: (number | "...")[] = [];
+        const rangeStart = Math.max(2, current - delta);
+        const rangeEnd = Math.min(total - 1, current + delta);
+
+        range.push(1);
+
+        if (rangeStart > 2) range.push("...");
+
+        for (let i = rangeStart; i <= rangeEnd; i++) {
+          range.push(i);
+        }
+
+        if (rangeEnd < total - 1) range.push("...");
+
+        if (total > 1) range.push(total);
+
+        return range;
+      };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -1319,28 +1340,49 @@ export default function B2BManifestListPage() {
               </table>
 
               {withDnPagination.totalPages > 1 && (
-                <div className="flex items-center justify-between px-2 py-3 mt-2 border-t border-slate-100">
-                  <span className="text-xs text-slate-500">
-                    Halaman {withDnPagination.page} dari {withDnPagination.totalPages} · {withDnPagination.totalCount} total data
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setWithDnPage((p) => Math.max(1, p - 1))}
-                      disabled={withDnPagination.page <= 1}
-                      className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
-                    >
-                      Prev
-                    </button>
-                    <button
-                      onClick={() => setWithDnPage((p) => Math.min(withDnPagination.totalPages, p + 1))}
-                      disabled={withDnPagination.page >= withDnPagination.totalPages}
-                      className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
-                    >
-                      Next
-                    </button>
-                  </div>
+              <div className="flex items-center justify-between px-2 py-3 mt-2 border-t border-slate-100 flex-wrap gap-2">
+                <span className="text-xs text-slate-500">
+                  Halaman {withDnPagination.page} dari {withDnPagination.totalPages} · {withDnPagination.totalCount} total data
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setWithDnPage((p) => Math.max(1, p - 1))}
+                    disabled={withDnPagination.page <= 1}
+                    className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
+                  >
+                    Prev
+                  </button>
+
+                  {getPageNumbers(withDnPagination.page, withDnPagination.totalPages).map((p, idx) =>
+                    p === "..." ? (
+                      <span key={`ellipsis-${idx}`} className="px-2 text-sm text-slate-400">
+                        ...
+                      </span>
+                    ) : (
+                      <button
+                        key={p}
+                        onClick={() => setWithDnPage(p)}
+                        className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                          p === withDnPagination.page
+                            ? "bg-[#0B2B4A] text-white font-semibold"
+                            : "border border-slate-200 hover:bg-slate-50 text-slate-600"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+
+                  <button
+                    onClick={() => setWithDnPage((p) => Math.min(withDnPagination.totalPages, p + 1))}
+                    disabled={withDnPagination.page >= withDnPagination.totalPages}
+                    className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
+                  >
+                    Next
+                  </button>
                 </div>
-              )}
+              </div>
+            )}
             </div>
           )}
 
@@ -1422,11 +1464,11 @@ export default function B2BManifestListPage() {
               </table>
 
               {noDnPagination.totalPages > 1 && (
-                <div className="flex items-center justify-between px-2 py-3 mt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between px-2 py-3 mt-2 border-t border-slate-100 flex-wrap gap-2">
                   <span className="text-xs text-slate-500">
                     Halaman {noDnPagination.page} dari {noDnPagination.totalPages} · {noDnPagination.totalCount} total data
                   </span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <button
                       onClick={() => setNoDnPage((p) => Math.max(1, p - 1))}
                       disabled={noDnPagination.page <= 1}
@@ -1434,6 +1476,27 @@ export default function B2BManifestListPage() {
                     >
                       Prev
                     </button>
+
+                    {getPageNumbers(noDnPagination.page, noDnPagination.totalPages).map((p, idx) =>
+                      p === "..." ? (
+                        <span key={`ellipsis-${idx}`} className="px-2 text-sm text-slate-400">
+                          ...
+                        </span>
+                      ) : (
+                        <button
+                          key={p}
+                          onClick={() => setNoDnPage(p)}
+                          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                            p === noDnPagination.page
+                              ? "bg-[#0B2B4A] text-white font-semibold"
+                              : "border border-slate-200 hover:bg-slate-50 text-slate-600"
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      )
+                    )}
+
                     <button
                       onClick={() => setNoDnPage((p) => Math.min(noDnPagination.totalPages, p + 1))}
                       disabled={noDnPagination.page >= noDnPagination.totalPages}
