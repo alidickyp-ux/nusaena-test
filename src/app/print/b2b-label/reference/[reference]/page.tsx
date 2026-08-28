@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
-import { Printer, ArrowLeft } from "lucide-react";
+import { Printer, ArrowLeft, Video } from "lucide-react";
 import Link from "next/link";
 import QRCode from "qrcode";
 
@@ -34,7 +34,7 @@ const INK = "#000000";
 
 export default function B2BLabelByReferencePage() {
   const params = useParams();
-  
+
   const rawReference = (params.reference as string) || "";
   const reference = decodeURIComponent(rawReference);
 
@@ -91,25 +91,25 @@ export default function B2BLabelByReferencePage() {
   const refNumber = reference;
 
   useEffect(() => {
-  if (!loading && qrCanvasRef.current && refNumber) {
-    QRCode.toCanvas(
-      qrCanvasRef.current,
-      refNumber,
-      {
-        width: 40, // Dikunci ke 40px
-        margin: 0, // Tanpa margin bawaan agar tidak makan space
-        color: {
-          dark: "#000000",
-          light: "#ffffff",
+    if (!loading && qrCanvasRef.current && refNumber) {
+      QRCode.toCanvas(
+        qrCanvasRef.current,
+        refNumber,
+        {
+          width: 75,
+          margin: 0,
+          color: {
+            dark: "#000000",
+            light: "#ffffff",
+          },
+          errorCorrectionLevel: "M",
         },
-        errorCorrectionLevel: "M",
-      },
-      (err) => {
-        if (err) console.error("QR Code render error:", err);
-      }
-    );
-  }
-}, [refNumber, loading]);
+        (err) => {
+          if (err) console.error("QR Code render error:", err);
+        }
+      );
+    }
+  }, [refNumber, loading]);
 
   const handlePrint = () => {
     window.print();
@@ -141,25 +141,28 @@ export default function B2BLabelByReferencePage() {
 
   const shipToLine = [firstBox.address, firstBox.city, firstBox.province].filter(Boolean).join(", ");
 
+  // Dimensi 10 cm x 12 cm
   const LABEL_W = 378;
-  const LABEL_H = 257;
-  const PAD_X = 11;
-  const PAD_Y = 8;
+  const LABEL_H = 453;
+  const PAD_X = 12;
+  const PAD_Y = 10;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-start">
-      <div className="mb-3 flex items-center justify-between no-print" style={{ width: `${LABEL_W}px` }}>
-        <Link href="/b2b/putaway" className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 font-bold uppercase tracking-wider transition-colors">
-          <ArrowLeft className="w-3 h-3" /> Kembali
+    <div className="min-h-screen bg-slate-100 p-6 flex flex-col items-center justify-start">
+      {/* Action Bar */}
+      <div className="mb-4 flex items-center justify-between no-print" style={{ width: `${LABEL_W}px` }}>
+        <Link href="/b2b/putaway" className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 font-bold uppercase tracking-wider transition-colors">
+          <ArrowLeft className="w-3.5 h-3.5" /> Kembali
         </Link>
         <button
           onClick={handlePrint}
           className="flex items-center gap-1.5 px-4 py-2 bg-[#0B2B4A] hover:bg-[#153e66] text-white rounded-lg text-xs font-bold uppercase tracking-wider shadow-sm transition-all"
         >
-          <Printer className="w-3.5 h-3.5" /> Print Label
+          <Printer className="w-4 h-4" /> Print Label
         </button>
       </div>
 
+      {/* Printable Area */}
       <div
         id="print-area"
         style={{
@@ -167,41 +170,68 @@ export default function B2BLabelByReferencePage() {
           height: `${LABEL_H}px`,
           position: "relative",
           backgroundColor: "#ffffff",
-          border: "1px solid #000000",
+          border: "2px solid #000000",
           boxSizing: "border-box",
           padding: `${PAD_Y}px ${PAD_X}px`,
-          fontFamily: "Arial, 'Helvetica Neue', sans-serif",
+          fontFamily: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
           overflow: "hidden",
           color: INK,
           display: "flex",
           flexDirection: "column",
+          justifyContent: "space-between",
           WebkitPrintColorAdjust: "exact",
           printColorAdjust: "exact",
         }}
       >
-        {/* Header */}
+        {/* Banner Warning Video Unboxing */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            border: "1.5px solid #000000",
+            padding: "4px 6px",
+            backgroundColor: "#ffffff",
+            flexShrink: 0,
+            marginBottom: "6px",
+          }}
+        >
+          <div style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
+            <Video style={{ width: "26px", height: "26px", color: "#000000" }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0, lineHeight: "1.1" }}>
+            <span style={{ display: "block", fontSize: "9.5px", fontWeight: 900, color: INK, letterSpacing: "0.2px" }}>
+              WAJIB VIDEO UNBOXING !!!
+            </span>
+            <span style={{ display: "block", fontSize: "8px", fontWeight: 800, color: INK, marginTop: "1px" }}>
+              TANPA VIDEO SEGALA BENTUK KOMPLAIN TIDAK DITERIMA
+            </span>
+          </div>
+        </div>
+
+        {/* Header Title & Destinasi */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            paddingBottom: "3px",
-            borderBottom: "1.5px solid #000000",
+            paddingBottom: "6px",
+            borderBottom: "2px solid #000000",
             flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: "13px", fontWeight: 900, letterSpacing: "0.5px", color: INK }}>
-            AWB LABEL
+          <span style={{ fontSize: "15px", fontWeight: 900, letterSpacing: "0.5px", color: INK }}>
+            SHIPPING LABEL
           </span>
           <span
             style={{
-              fontSize: "11px",
+              fontSize: "12px",
               fontWeight: 900,
               backgroundColor: "#000000",
               color: "#ffffff",
-              padding: "2px 8px",
-              borderRadius: "3px",
-              letterSpacing: "0.3px",
+              padding: "3px 8px",
+              borderRadius: "2px",
+              letterSpacing: "0.5px",
               whiteSpace: "nowrap",
             }}
           >
@@ -209,111 +239,97 @@ export default function B2BLabelByReferencePage() {
           </span>
         </div>
 
-        {/* Reference / Delivery */}
+        {/* Reference & QR */}
         <div
           style={{
             display: "flex",
+            alignItems: "center",
             justifyContent: "space-between",
-            gap: "8px",
-            padding: "4px 0",
-            borderBottom: "1px solid #000000",
+            padding: "6px 0",
+            borderBottom: "1.5px solid #000000",
             flexShrink: 0,
+            gap: "8px",
           }}
         >
-          <div style={{ minWidth: 0 }}>
-            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: INK, letterSpacing: "0.3px" }}>
-              REFERENCE NUMBER
-            </span>
-            <span
-              style={{
-                display: "block",
-                fontSize: "11px",
-                fontWeight: 900,
-                fontFamily: "monospace",
-                color: INK,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {refNumber}
-            </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ marginBottom: "4px" }}>
+              <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: "#333", letterSpacing: "0.3px" }}>
+                REFERENCE NUMBER
+              </span>
+              <span style={{ display: "block", fontSize: "13px", fontWeight: 900, fontFamily: "monospace", color: INK }}>
+                {refNumber}
+              </span>
+            </div>
+            <div>
+              <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: "#333", letterSpacing: "0.3px" }}>
+                DELIVERY NUMBER
+              </span>
+              <span style={{ display: "block", fontSize: "11px", fontWeight: 800, fontFamily: "monospace", color: INK }}>
+                {firstBox.delivery_number || "-"}
+              </span>
+            </div>
           </div>
-          <div style={{ minWidth: 0, textAlign: "right" }}>
-            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: INK, letterSpacing: "0.3px" }}>
-              DELIVERY NUMBER
-            </span>
-            <span
-              style={{
-                display: "block",
-                fontSize: "11px",
-                fontWeight: 900,
-                fontFamily: "monospace",
-                color: INK,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {firstBox.delivery_number || "-"}
-            </span>
+          <div style={{ flexShrink: 0, border: "1px solid #000", padding: "3px" }}>
+            <canvas ref={qrCanvasRef} style={{ display: "block" }} />
           </div>
         </div>
 
-        {/* Sender / Ship To */}
-          <div
-            style={{
-              display: "flex",
-              gap: "8px",
-              padding: "5px 0",
-              borderBottom: "1px solid #000000",
-              flex: "1 1 auto",   // ganti dari flexShrink: 0
-              minHeight: 0,        // tambahan
-              overflow: "hidden",  // tambahan
-            }}
-          >
-            
-          <div style={{ flex: "0 0 30%", minWidth: 0, borderRight: "1px solid #000000", paddingRight: "8px" }}>
-            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: INK, letterSpacing: "0.3px", marginBottom: "2px" }}>
-              SENDER
+        {/* Sender & Receiver */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px",
+            padding: "6px 0",
+            borderBottom: "1.5px solid #000000",
+            flex: "1 1 auto",
+            minHeight: 0,
+          }}
+        >
+          {/* Pengirim */}
+          <div style={{ flexShrink: 0 }}>
+            <span style={{ display: "block", fontSize: "8.5px", fontWeight: 900, color: "#444", letterSpacing: "0.3px" }}>
+              FROM (SENDER):
             </span>
-            <span style={{ display: "block", fontSize: "9px", fontWeight: 900, color: INK }}>
-              {SENDER.name}
-            </span>
-            <span
-              style={{
-                display: "-webkit-box",
-                WebkitLineClamp: 4,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-                fontSize: "7.5px",
-                fontWeight: 800,
-                color: INK,
-                lineHeight: "1.3",
-                marginTop: "2px",
-              }}
-            >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span style={{ fontSize: "9.5px", fontWeight: 900, color: INK }}>{SENDER.name}</span>
+              <span style={{ fontSize: "8px", fontWeight: 800, color: INK }}>Brand: {firstBox.brand || "-"}</span>
+            </div>
+            <span style={{ display: "block", fontSize: "9px", fontWeight: 700, color: INK, lineHeight: "1.25", marginTop: "1px" }}>
               {SENDER.address}
-            </span>
-            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: INK, marginTop: "3px" }}>
-              Brand: {firstBox.brand || "-"}
             </span>
           </div>
 
-          <div style={{ flex: "1 1 0", minWidth: 0 }}>
-            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: INK, letterSpacing: "0.3px", marginBottom: "2px" }}>
-              SHIP TO (RECEIVER)
+          {/* Penerima (Fleksibel & Luas) */}
+          <div
+            style={{
+              border: "1.5px solid #000",
+              padding: "6px 8px",
+              backgroundColor: "#fff",
+              flex: "1 1 auto",
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
+              overflow: "hidden",
+            }}
+          >
+            <span style={{ display: "block", fontSize: "8px", fontWeight: 900, color: "#000", letterSpacing: "0.3px", marginBottom: "2px", flexShrink: 0 }}>
+              SHIP TO (RECEIVER):
             </span>
-            <span style={{ display: "block", fontSize: "9.5px", fontWeight: 900, color: INK }}>
+            <span style={{ display: "block", fontSize: "12px", fontWeight: 900, color: INK, lineHeight: "1.2", flexShrink: 0, marginBottom: "3px" }}>
               {firstBox.store_name || "-"}
             </span>
             <span
               style={{
                 display: "-webkit-box",
-                WebkitLineClamp: 4,
+                WebkitLineClamp: 5,
                 WebkitBoxOrient: "vertical",
                 overflow: "hidden",
-                fontSize: "8.5px",
-                fontWeight: 800,
+                fontSize: "9.5px",
+                fontWeight: 600,
                 color: INK,
                 lineHeight: "1.35",
-                marginTop: "2px",
+                wordBreak: "break-word",
               }}
             >
               {shipToLine}
@@ -321,68 +337,52 @@ export default function B2BLabelByReferencePage() {
           </div>
         </div>
 
-        {/* Qty / Weight / Volume */}
+        {/* Metric Grid */}
         <div
           style={{
-            display: "flex",
-            padding: "4px 0",
-            borderBottom: "1px solid #000000",
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            borderBottom: "1.5px solid #000000",
             flexShrink: 0,
+            textAlign: "center",
           }}
         >
-          <div style={{ flex: "0 0 33%" }}>
-            <span style={{ fontSize: "8px", fontWeight: 900, color: INK, marginRight: "3px" }}>TOTAL PACKAGE:</span>
+          <div style={{ padding: "5px 2px", borderRight: "1px solid #000" }}>
+            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: "#444" }}>TOTAL BOX</span>
             <span style={{ fontSize: "16px", fontWeight: 900, color: INK }}>{totals.total_box}</span>
           </div>
-          <div style={{ flex: "0 0 34%" }}>
-            <span style={{ fontSize: "8px", fontWeight: 900, color: INK, marginRight: "3px" }}>WEIGHT:</span>
-            <span style={{ fontSize: "16px", fontWeight: 900, color: INK }}>{totals.total_weight.toFixed(1)}</span>
-            <span style={{ fontSize: "8px", color: INK, fontWeight: 900, marginLeft: "2px" }}>KG</span>
+          <div style={{ padding: "5px 2px", borderRight: "1px solid #000" }}>
+            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: "#444" }}>WEIGHT</span>
+            <span style={{ fontSize: "16px", fontWeight: 900, color: INK }}>
+              {totals.total_weight.toFixed(1)} <span style={{ fontSize: "8.5px" }}>KG</span>
+            </span>
           </div>
-          <div style={{ flex: "0 0 33%" }}>
-            <span style={{ fontSize: "8px", fontWeight: 900, color: INK, marginRight: "3px" }}>VOLUME:</span>
-            <span style={{ fontSize: "16px", fontWeight: 900, color: INK }}>{totals.total_volume.toFixed(2)}</span>
+          <div style={{ padding: "5px 2px" }}>
+            <span style={{ display: "block", fontSize: "7.5px", fontWeight: 900, color: "#444" }}>VOLUME</span>
+            <span style={{ fontSize: "16px", fontWeight: 900, color: INK }}>
+              {totals.total_volume.toFixed(2)}
+            </span>
           </div>
         </div>
 
-                {/* Items + QR Code — selalu dapat ruang penuh, di antara garis qty dan border bawah */}
+        {/* Footer */}
         <div
           style={{
-            flex: "0 0 auto",       // dikunci, tidak pernah dipaksa mengecil
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "6px",
             marginTop: "4px",
+            paddingTop: "2px",
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: "7.5px",
+            fontWeight: 800,
+            color: "#444",
+            flexShrink: 0,
           }}
         >
-          <div
-            style={{
-              flex: "1 1 auto",
-              minWidth: 0,
-              fontSize: "7.5px",
-              fontWeight: 800,
-              fontFamily: "monospace",
-              color: INK,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            <span style={{ fontWeight: 900 }}>ITEMS:</span>{" "}
-            {boxes.map((d) => `${d.box_number}(${d.weight}kg)`).join(" • ")}
-          </div>
-          <canvas
-            ref={qrCanvasRef}
-            style={{
-              height: "38px",
-              width: "40px",
-              flexShrink: 0,
-              display: "block",
-            }}
-          />
+          <span>SITE: {firstBox.site || "-"}</span>
+          <span>STAGING: {firstBox.staging_location || "-"}</span>
         </div>
-        </div>
+      </div>
+
       <style jsx global>{`
         @media print {
           body {
@@ -404,8 +404,8 @@ export default function B2BLabelByReferencePage() {
             left: 0 !important;
             top: 0 !important;
             width: 378px !important;
-            height: 257px !important;
-            border: 1px solid #000000 !important;
+            height: 453px !important;
+            border: 2px solid #000000 !important;
             box-sizing: border-box !important;
           }
           .no-print {
@@ -413,7 +413,7 @@ export default function B2BLabelByReferencePage() {
           }
         }
         @page {
-          size: 100mm 72mm;
+          size: 100mm 120mm;
           margin: 0;
         }
       `}</style>
