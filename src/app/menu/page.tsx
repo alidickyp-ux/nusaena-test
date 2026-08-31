@@ -10,6 +10,7 @@ export default function MenuPage() {
   const [userRole, setUserRole] = useState("");
   const [loading, setLoading] = useState(true);
   const [showB2C, setShowB2C] = useState(false);
+  const [showPP, setShowPP] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -76,6 +77,12 @@ export default function MenuPage() {
 
   const b2cMenus = getB2CSubmenus();
 
+  // Submenu Picking & Packing — operasional gudang berbasis sales order, tidak untuk SECURITY
+  const ppMenus = [
+    { id: 'picking', label: 'Picking', icon: '📋', path: '/b2b/picking', desc: 'Scan lokasi & artikel sesuai SO' },
+    { id: 'packing', label: 'Packing', icon: '📦', path: '/b2b/packing', desc: 'Susun ke box & tutup box' },
+  ];
+
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col max-w-md mx-auto px-6 py-10">
       {/* Header */}
@@ -115,6 +122,60 @@ export default function MenuPage() {
               </div>
             </div>
           </button>
+        )}
+
+        {/* 🔥 Picking & Packing - operasional SO, tidak untuk SECURITY */}
+        {!isSecurity && (
+          <div className="bg-white border-2 border-teal-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all">
+            <button
+              onClick={() => setShowPP(!showPP)}
+              className="w-full p-6 text-left flex items-center justify-between hover:bg-teal-50/50 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-xl bg-teal-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-7 h-7 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-stone-900 font-extrabold text-lg">📋 Picking &amp; Packing</div>
+                  <div className="text-stone-500 text-xs mt-0.5">Proses sales order gudang</div>
+                </div>
+              </div>
+              <svg
+                className={`w-5 h-5 text-stone-400 transition-transform duration-300 ${showPP ? 'rotate-180' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {showPP && (
+              <div className="border-t border-teal-100 p-3 space-y-2 bg-teal-50/30">
+                {ppMenus.map((menu) => (
+                  <button
+                    key={menu.id}
+                    onClick={() => router.push(menu.path)}
+                    className="w-full flex items-center gap-3 p-3 bg-white rounded-xl hover:bg-teal-50 transition-colors active:scale-[0.98] border border-stone-100"
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center flex-shrink-0">
+                      <span className="text-lg">{menu.icon}</span>
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="text-sm font-bold text-stone-800">{menu.label}</p>
+                      <p className="text-[10px] text-stone-400">{menu.desc}</p>
+                    </div>
+                    <svg className="w-4 h-4 text-stone-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* 🔥 B2C - Selalu tampil, tetapi submenu disesuaikan */}

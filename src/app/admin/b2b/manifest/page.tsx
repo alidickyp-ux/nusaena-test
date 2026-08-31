@@ -145,6 +145,9 @@ function EditReferenceModal({
   const [saving, setSaving] = useState(false);
   const [loadingShipTo, setLoadingShipTo] = useState(false);
 
+  
+
+
   useEffect(() => {
     if (!reference) return;
 
@@ -618,6 +621,12 @@ export default function B2BManifestListPage() {
     province: '',
   });
 
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
+  const [filterResi, setFilterResi] = useState("");
+  const [filterInvoice, setFilterInvoice] = useState("");
+
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm), 400);
     return () => clearTimeout(t);
@@ -684,29 +693,34 @@ export default function B2BManifestListPage() {
     }
   };
 
-  const fetchWithDn = async () => {
-    setLoadingWithDn(true);
-    try {
-      const params = new URLSearchParams({
-        page: String(withDnPage),
-        limit: "25",
-        search: debouncedSearch,
-      });
-      const res = await fetch(`/api/b2b/manifest/references/with-dn?${params}`, { cache: "no-store" });
-      if (res.ok) {
-        const data = await res.json();
-        setWithDnRefs(data.data || []);
-        if (data.pagination) setWithDnPagination(data.pagination);
-      } else {
-        setWithDnRefs([]);
+      const fetchWithDn = async () => {
+      setLoadingWithDn(true);
+      try {
+        const params = new URLSearchParams({
+          page: String(withDnPage),
+          limit: "25",
+          search: debouncedSearch,
+        });
+        if (filterStartDate) params.append("startDate", filterStartDate);
+        if (filterEndDate) params.append("endDate", filterEndDate);
+        if (filterResi) params.append("resi", filterResi);
+        if (filterInvoice) params.append("invoice", filterInvoice);
+
+        const res = await fetch(`/api/b2b/manifest/references/with-dn?${params}`, { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          setWithDnRefs(data.data || []);
+          if (data.pagination) setWithDnPagination(data.pagination);
+        } else {
+          setWithDnRefs([]);
+        }
+      } catch (error) {
+        console.error("Error fetching references:", error);
+        showToast.error("Error fetching references");
+      } finally {
+        setLoadingWithDn(false);
       }
-    } catch (error) {
-      console.error("Error fetching references:", error);
-      showToast.error("Error fetching references");
-    } finally {
-      setLoadingWithDn(false);
-    }
-  };
+    };
 
   const fetchNoDn = async () => {
     setLoadingNoDn(true);
@@ -1224,167 +1238,216 @@ export default function B2BManifestListPage() {
 
           {/* TAB 2: SEMUA REFERENCE — 🔥 INVOICE: kolom baru + font dikecilkan */}
           {activeTab === "references" && (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      DN Number
-                    </th>
-                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Reference
-                    </th>
-                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Loading At
-                    </th>
-                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Arrived At
-                    </th>
-                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      No Resi
-                    </th>
-                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      No Invoice
-                    </th>
-                    <th className="text-right px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Aksi
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {loadingWithDn ? (
-                    <tr>
-                      <td colSpan={9} className="px-4 py-8 text-center text-slate-500 text-sm">
-                        Loading...
-                      </td>
+            <>
+              {/* FILTER BAR */}
+              <div className="flex flex-wrap gap-3 items-end mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Tanggal Loading Dari</label>
+                  <input
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Sampai</label>
+                  <input
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">No Resi</label>
+                  <input
+                    type="text"
+                    value={filterResi}
+                    onChange={(e) => setFilterResi(e.target.value)}
+                    placeholder="Cari resi..."
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">No Invoice</label>
+                  <input
+                    type="text"
+                    value={filterInvoice}
+                    onChange={(e) => setFilterInvoice(e.target.value)}
+                    placeholder="Cari invoice..."
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    setWithDnPage(1);
+                    fetchWithDn();
+                  }}
+                  className="px-4 py-2 bg-[#0B2B4A] hover:bg-[#123a5e] text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  Terapkan Filter
+                </button>
+                <button
+                  onClick={() => {
+                    setFilterStartDate("");
+                    setFilterEndDate("");
+                    setFilterResi("");
+                    setFilterInvoice("");
+                    setWithDnPage(1);
+                    setTimeout(fetchWithDn, 100);
+                  }}
+                  className="px-4 py-2 border border-slate-300 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+
+              {/* TABEL */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">DN Number</th>
+                      <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Reference</th>
+                      <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Loading At</th>
+                      <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Arrived At</th>
+                      <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                      <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">No Resi</th>
+                      <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">No Invoice</th>
+                      <th className="text-right px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Aksi</th>
                     </tr>
-                  ) : withDnRefs.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="px-4 py-8 text-center text-slate-500 text-sm">
-                        {searchTerm ? "Tidak ada reference yang sesuai" : "Belum ada reference"}
-                      </td>
-                    </tr>
-                  ) : (
-                    withDnRefs.map((ref) => (
-                      <tr key={ref.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-3 py-3">
-                        <div className="flex flex-col">
-                          <span className="font-mono text-xs text-slate-700">
-                            {ref.delivery_number || "-"}
-                          </span>
-                          {ref.vendor_name && (
-                            <span className="font-mono text-xs text-red-700">
-                              {ref.vendor_name}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                        <td className="px-3 py-3">
-                          <div className="flex flex-col">
-                            <span className="font-mono font-bold text-xs text-slate-800">{ref.reference}</span>
-                            {ref.store_name && (
-                              <span className="text-[10px] text-red-700">
-                                {ref.store_name}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-3 text-xs text-slate-500">
-                          {formatDate(ref.loading_date || null)}
-                        </td>
-                        <td className="px-3 py-3 text-xs text-slate-500">
-                          {formatDateOnly(ref.arrive_date)}
-                        </td>
-                        <td className="px-3 py-3">
-                          {ref.delivered_status === "arrived" ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-                              <PackageCheck className="w-3 h-3" /> Arrived
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                              <Truck className="w-3 h-3" /> On Shipping
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-3">
-                          <span className="font-mono text-xs">{ref.resi_number || "-"}</span>
-                        </td>
-                        <td className="px-3 py-3">
-                          {/* 🔥 INVOICE: cell baru */}
-                          <span className="font-mono text-xs">{ref.invoice_number || "-"}</span>
-                        </td>
-                        <td className="px-3 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => handlePrintLabel(ref.reference)}
-                              className="p-1.5 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
-                              title="Print Label"
-                            >
-                              <Printer className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleEditClick(ref)}
-                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="Edit"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {loadingWithDn ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="w-5 h-5 border-2 border-[#0B2B4A] border-t-transparent rounded-full animate-spin"></div>
+                            Loading...
                           </div>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-
-              {withDnPagination.totalPages > 1 && (
-              <div className="flex items-center justify-between px-2 py-3 mt-2 border-t border-slate-100 flex-wrap gap-2">
-                <span className="text-xs text-slate-500">
-                  Halaman {withDnPagination.page} dari {withDnPagination.totalPages} · {withDnPagination.totalCount} total data
-                </span>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setWithDnPage((p) => Math.max(1, p - 1))}
-                    disabled={withDnPagination.page <= 1}
-                    className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
-                  >
-                    Prev
-                  </button>
-
-                  {getPageNumbers(withDnPagination.page, withDnPagination.totalPages).map((p, idx) =>
-                    p === "..." ? (
-                      <span key={`ellipsis-${idx}`} className="px-2 text-sm text-slate-400">
-                        ...
-                      </span>
+                    ) : withDnRefs.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
+                          {searchTerm || filterStartDate || filterEndDate || filterResi || filterInvoice
+                            ? "Tidak ada reference yang sesuai dengan filter"
+                            : "Belum ada reference"}
+                        </td>
+                      </tr>
                     ) : (
-                      <button
-                        key={p}
-                        onClick={() => setWithDnPage(p)}
-                        className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                          p === withDnPagination.page
-                            ? "bg-[#0B2B4A] text-white font-semibold"
-                            : "border border-slate-200 hover:bg-slate-50 text-slate-600"
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    )
-                  )}
+                      withDnRefs.map((ref) => (
+                        <tr key={ref.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-3 py-3">
+                            <div className="flex flex-col">
+                              <span className="font-mono text-xs text-slate-700">{ref.delivery_number || "-"}</span>
+                              {ref.vendor_name && (
+                                <span className="font-mono text-xs text-red-700">{ref.vendor_name}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-col">
+                              <span className="font-mono font-bold text-xs text-slate-800">{ref.reference}</span>
+                              {ref.store_name && (
+                                <span className="text-[10px] text-red-700">{ref.store_name}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-xs text-slate-500">
+                            {formatDate(ref.loading_date || null)}
+                          </td>
+                          <td className="px-3 py-3 text-xs text-slate-500">
+                            {formatDateOnly(ref.arrive_date)}
+                          </td>
+                          <td className="px-3 py-3">
+                            {ref.delivered_status === "arrived" ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                                <PackageCheck className="w-3 h-3" /> Arrived
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                <Truck className="w-3 h-3" /> On Shipping
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className="font-mono text-xs">{ref.resi_number || "-"}</span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className="font-mono text-xs">{ref.invoice_number || "-"}</span>
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => handlePrintLabel(ref.reference)}
+                                className="p-1.5 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
+                                title="Print Label"
+                              >
+                                <Printer className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleEditClick(ref)}
+                                className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Edit"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
 
-                  <button
-                    onClick={() => setWithDnPage((p) => Math.min(withDnPagination.totalPages, p + 1))}
-                    disabled={withDnPagination.page >= withDnPagination.totalPages}
-                    className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
-                  >
-                    Next
-                  </button>
-                </div>
+                {withDnPagination.totalPages > 1 && (
+                  <div className="flex items-center justify-between px-2 py-3 mt-2 border-t border-slate-100 flex-wrap gap-2">
+                    <span className="text-xs text-slate-500">
+                      Halaman {withDnPagination.page} dari {withDnPagination.totalPages} · {withDnPagination.totalCount} total data
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setWithDnPage((p) => Math.max(1, p - 1))}
+                        disabled={withDnPagination.page <= 1}
+                        className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
+                      >
+                        Prev
+                      </button>
+
+                      {getPageNumbers(withDnPagination.page, withDnPagination.totalPages).map((p, idx) =>
+                        p === "..." ? (
+                          <span key={`ellipsis-${idx}`} className="px-2 text-sm text-slate-400">
+                            ...
+                          </span>
+                        ) : (
+                          <button
+                            key={p}
+                            onClick={() => setWithDnPage(p)}
+                            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                              p === withDnPagination.page
+                                ? "bg-[#0B2B4A] text-white font-semibold"
+                                : "border border-slate-200 hover:bg-slate-50 text-slate-600"
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        )
+                      )}
+
+                      <button
+                        onClick={() => setWithDnPage((p) => Math.min(withDnPagination.totalPages, p + 1))}
+                        disabled={withDnPagination.page >= withDnPagination.totalPages}
+                        className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-50 transition-colors"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-            </div>
+            </>
           )}
 
           {/* TAB 3: REFERENCE TANPA DN — TIDAK ADA PERUBAHAN */}

@@ -21,9 +21,67 @@ export async function GET(request: NextRequest) {
     const limit = Math.max(1, parseInt(searchParams.get('limit') || '25', 10));
     const offset = (page - 1) * limit;
     const search = (searchParams.get('search') || '').trim();
-    const pattern = `%${search}%`;
+    const startDate = searchParams.get('startDate') || '';
+    const endDate = searchParams.get('endDate') || '';
+    const resiFilter = (searchParams.get('resi') || '').trim();
+    const invoiceFilter = (searchParams.get('invoice') || '').trim();
 
-    const rows = await sql`
+    // Bangun array kondisi dan parameter secara dinamis
+    const conditions: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    // 1. Filter search global (jika ada)
+    if (search) {
+      const p = `%${search}%`;
+      conditions.push(`
+        (mo.delivery_number ILIKE $${paramIndex} OR
+         mo.vendor_name ILIKE $${paramIndex} OR
+         mr.reference ILIKE $${paramIndex} OR
+         mr.resi_number ILIKE $${paramIndex} OR
+         mr.invoice_number ILIKE $${paramIndex} OR
+         mr.delivered_status ILIKE $${paramIndex} OR
+         pa.store_name ILIKE $${paramIndex})
+      `);
+      params.push(p);
+      paramIndex++;
+    }
+
+    // 2. Filter tanggal loading (dari)
+    if (startDate) {
+      conditions.push(`mo.loading_date::DATE >= $${paramIndex}`);
+      params.push(startDate);
+      paramIndex++;
+    }
+
+    // 3. Filter tanggal loading (sampai)
+    if (endDate) {
+      conditions.push(`mo.loading_date::DATE <= $${paramIndex}`);
+      params.push(endDate);
+      paramIndex++;
+    }
+
+    // 4. Filter nomor resi (partial match)
+    if (resiFilter) {
+      conditions.push(`mr.resi_number ILIKE $${paramIndex}`);
+      params.push(`%${resiFilter}%`);
+      paramIndex++;
+    }
+
+    // 5. Filter nomor invoice (partial match)
+    if (invoiceFilter) {
+      conditions.push(`mr.invoice_number ILIKE $${paramIndex}`);
+      params.push(`%${invoiceFilter}%`);
+      paramIndex++;
+    }
+
+    // Gabungkan semua kondisi dengan AND
+    const whereClause = conditions.length > 0
+      ? `WHERE ${conditions.join(' AND ')}`
+      : '';
+
+    // Build final query dengan parameterized SQL (menggunakan sql.join secara manual)
+    const finalQuery = `
       WITH putaway_agg AS (
         SELECT reference, MAX(store_name) as store_name, MAX(site) as site
         FROM b2b_putaway
@@ -50,21 +108,16 @@ export async function GET(request: NextRequest) {
         FROM manifest_reference mr
         INNER JOIN manifest_order mo ON mo.id = mr.manifest_id
         LEFT JOIN putaway_agg pa ON pa.reference = mr.reference
-        WHERE (
-        mo.delivery_number ILIKE ${pattern} OR
-        mo.vendor_name ILIKE ${pattern} OR
-        mr.reference ILIKE ${pattern} OR
-        mr.resi_number ILIKE ${pattern} OR
-        mr.invoice_number ILIKE ${pattern} OR
-        mr.delivered_status ILIKE ${pattern} OR
-        pa.store_name ILIKE ${pattern}
-      )
+        ${whereClause}
       )
       SELECT *, COUNT(*) OVER() as total_count
       FROM base
       ORDER BY delivery_number ASC, reference ASC
-      LIMIT ${limit} OFFSET ${offset}
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `;
+
+    // Eksekusi query dengan parameter array
+    const rows = await sql(finalQuery, [...params, limit, offset]);
 
     const totalCount = rows.length > 0 ? Number((rows[0] as any).total_count) : 0;
     const totalPages = Math.max(1, Math.ceil(totalCount / limit));
