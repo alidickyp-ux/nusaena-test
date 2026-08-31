@@ -122,7 +122,7 @@ export default function B2BPage() {
         </div>
 
         <footer className="text-center text-[11px] text-stone-400 font-mono font-semibold pt-10">
-          COOL SYSTEM V3 · B2B
+          Nusaena V1 · B2B
         </footer>
       </div>
     </OperatorShell>
