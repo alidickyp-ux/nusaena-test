@@ -37,10 +37,11 @@ export async function GET(request: NextRequest) {
         bp.security,
         bp.police_number,
         bp.putaway_at,
-        bp.loading_at,
+        -- bp.loading_at,  -- ❌ DIHAPUS (tidak dipakai di export)
         bp.delivery_number,
         bp.created_at,
         bp.updated_at,
+        bp.brand,           -- ✅ TAMBAHKAN BRAND
         mo.vendor_name,
         mo.loading_date,
         mo.total_box,

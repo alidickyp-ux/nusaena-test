@@ -928,92 +928,94 @@ export default function B2BManifestListPage() {
 
   const formatWeight = (w: string) => `${Number(w).toLocaleString("id-ID")} kg`;
 
-  const handleExportPutaway = async () => {
-    try {
-      const res = await fetch("/api/b2b/export/putaway", { cache: "no-store" });
-      if (!res.ok) throw new Error("Gagal export");
-      const data = await res.json();
-      const rows = data.data || [];
-      if (rows.length === 0) {
-        showToast.warning("Tidak ada data");
-        return;
+      const handleExportPutaway = async () => {
+      try {
+        const res = await fetch("/api/b2b/export/putaway", { cache: "no-store" });
+        if (!res.ok) throw new Error("Gagal export");
+        const data = await res.json();
+        const rows = data.data || [];
+        if (rows.length === 0) {
+          showToast.warning("Tidak ada data");
+          return;
+        }
+
+        // ✅ Header baru: Loading At dihapus, Brand ditambahkan di akhir
+        const headers = [
+          "DN Number",
+          "Vendor",
+          "Reference",
+          "Resi Number",
+          "Invoice Number",
+          "Status",
+          "Loading Date",
+          "Arrive Date",
+          "Box ID",
+          "Box Number",
+          "Weight (kg)",
+          "Site",
+          "Staging Location",
+          "Store Name",
+          "Address",
+          "City",
+          "Province",
+          "Loading Status",
+          "Driver",
+          "Operator",
+          "Security",
+          "Police Number",
+          "Putaway At",
+          "Brand", // ✅ tambahkan Brand di akhir
+        ];
+
+        const exportRows = rows.map((row: any) => [
+          row.delivery_number || "",
+          row.vendor_name || "",
+          row.reference || "",
+          row.resi_number || "",
+          row.invoice_number || "",
+          row.delivered_status || "",
+          row.loading_date ? new Date(row.loading_date).toLocaleString("id-ID") : "",
+          row.arrive_date ? new Date(row.arrive_date).toLocaleString("id-ID") : "",
+          row.box_id || "",
+          row.box_number || "",
+          row.weight || "",
+          row.site || "",
+          row.staging_location || "",
+          row.store_name || "",
+          row.address || "",
+          row.city || "",
+          row.province || "",
+          row.loading_status || "",
+          row.driver || "",
+          row.operator || "",
+          row.security || "",
+          row.police_number || "",
+          row.putaway_at ? new Date(row.putaway_at).toLocaleString("id-ID") : "",
+          // row.loading_at dihapus ❌
+          row.brand || "", // ✅ tambahkan brand
+        ]);
+
+        const csvContent = [
+          headers.join(","),
+          ...exportRows.map((row: (string | number)[]) =>
+            row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+          ),
+        ].join("\n");
+
+        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `b2b_putaway_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showToast.success(`✅ Export ${rows.length} data berhasil`);
+      } catch (error) {
+        console.error("Export error:", error);
+        showToast.error("Error export");
       }
-
-      const headers = [
-        "DN Number",
-        "Vendor",
-        "Reference",
-        "Resi Number",
-        "Invoice Number", 
-        "Status",
-        "Loading Date",
-        "Arrive Date",
-        "Box ID",
-        "Box Number",
-        "Weight (kg)",
-        "Site",
-        "Staging Location",
-        "Store Name",
-        "Address",
-        "City",
-        "Province",
-        "Loading Status",
-        "Driver",
-        "Operator",
-        "Security",
-        "Police Number",
-        "Putaway At",
-        "Loading At",
-      ];
-
-      const exportRows = rows.map((row: any) => [
-        row.delivery_number || "",
-        row.vendor_name || "",
-        row.reference || "",
-        row.resi_number || "",
-        row.invoice_number || "",
-        row.delivered_status || "",
-        row.loading_date ? new Date(row.loading_date).toLocaleString("id-ID") : "",
-        row.arrive_date ? new Date(row.arrive_date).toLocaleString("id-ID") : "",
-        row.box_id || "",
-        row.box_number || "",
-        row.weight || "",
-        row.site || "",
-        row.staging_location || "",
-        row.store_name || "",
-        row.address || "",
-        row.city || "",
-        row.province || "",
-        row.loading_status || "",
-        row.driver || "",
-        row.operator || "",
-        row.security || "",
-        row.police_number || "",
-        row.putaway_at ? new Date(row.putaway_at).toLocaleString("id-ID") : "",
-        row.loading_at ? new Date(row.loading_at).toLocaleString("id-ID") : "",
-      ]);
-
-      const csvContent = [
-        headers.join(","),
-        ...exportRows.map((row: (string | number)[]) =>
-          row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
-        ),
-      ].join("\n");
-
-      const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `b2b_putaway_${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      showToast.success(`✅ Export ${rows.length} data berhasil`);
-    } catch (error) {
-      console.error("Export error:", error);
-      showToast.error("Error export");
-    }
-  };
+    };
 
         const getPageNumbers = (current: number, total: number): (number | "...")[] => {
         const delta = 1; // jumlah halaman di kiri-kanan current page
@@ -1764,15 +1766,18 @@ export default function B2BManifestListPage() {
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
                   Brand
                 </label>
-                <input
-                  type="text"
+                <select
                   value={createForm.brand}
                   onChange={(e) => setCreateForm({ ...createForm, brand: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
-                  placeholder="BODYPAK / EXPORT"
-                />
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent bg-white"
+                >
+                  <option value="">-- Pilih Brand --</option>
+                  <option value="EXSPORT">EXSPORT</option>
+                  <option value="BODYPACK">BODYPACK</option>
+                  <option value="SHARED OPS">SHARED OPS</option>
+                </select>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Brand/merek produk (opsional)
+                  Pilih brand produk
                 </p>
               </div>
               <div className="flex gap-3 pt-2 border-t border-slate-200">
