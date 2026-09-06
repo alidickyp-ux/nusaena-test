@@ -17,14 +17,20 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { reference, box_id, box_number, weight, volume, site, store_name, address, city, province, brand } = body;
+        const { box_id, box_number, weight, volume, site, store_name, address, city, province, brand } = body;
 
-    if (!reference) {
-      return NextResponse.json(
-        { success: false, message: 'Reference wajib diisi' },
-        { status: 400 }
-      );
-    }
+        // 🔥 Trim reference di awal, sebelum dipakai untuk validasi maupun insert —
+        // mencegah reference dengan spasi nyangkut (leading/trailing) yang bikin
+        // mismatch saat dicari via scan/validate-box nantinya.
+        const reference: string | undefined =
+          typeof body.reference === 'string' ? body.reference.trim() : body.reference;
+
+        if (!reference) {
+          return NextResponse.json(
+            { success: false, message: 'Reference wajib diisi' },
+            { status: 400 }
+          );
+        }
 
     const finalBoxId = (box_id && box_id.trim() !== '') ? box_id.trim() : reference;
     const finalBoxNumber = ((box_number && box_number.trim() !== '') ? box_number.trim() : reference).slice(0, 50);

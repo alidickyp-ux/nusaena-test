@@ -17,12 +17,19 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { box_id, vendor_name } = body;
-    // 🔥 references: array of reference yang sedang di-loading bareng (multi-select).
+    const { vendor_name } = body;
+
+    // 🔥 Normalisasi box_id dan setiap reference: trim whitespace di awal/akhir
+    // supaya nggak mismatch gara-gara spasi nyangkut dari input manual/scanner.
+    const box_id: string | undefined =
+      typeof body.box_id === 'string' ? body.box_id.trim() : body.box_id;
+
+    // references: array of reference yang sedang di-loading bareng (multi-select).
     // Tetap terima `reference` tunggal untuk kompatibilitas kalau ada pemanggil lama.
-    const references: string[] = Array.isArray(body.references)
+    const references: string[] = (Array.isArray(body.references)
       ? body.references
-      : (body.reference ? [body.reference] : []);
+      : (body.reference ? [body.reference] : [])
+    ).map((r: string) => (typeof r === 'string' ? r.trim() : r));
 
     if (!box_id || !vendor_name || references.length === 0) {
       return NextResponse.json(
@@ -36,6 +43,8 @@ export async function POST(request: NextRequest) {
     // tabel (dijaga di endpoint scan), jadi cukup 1 row yang match; tetap urutkan
     // sesuai posisi reference di array supaya perilaku "reference pertama yang cocok
     // yang dipakai" persis sama seperti versi loop.
+    // Cast eksplisit ke ::text[] karena driver Neon nggak selalu bisa infer tipe
+    // array dari parameter, yang bikin error "function unnest(unknown) is not unique".
     const boxMatches = await sql`
       SELECT 
         id,
@@ -45,7 +54,7 @@ export async function POST(request: NextRequest) {
         vendor_name
       FROM b2b_putaway
       WHERE box_id = ${box_id}
-        AND reference = ANY(${references})
+        AND reference = ANY(${references}::text[])
         AND (vendor_name IS NULL OR vendor_name = ${vendor_name})
     `;
 
@@ -86,7 +95,7 @@ export async function POST(request: NextRequest) {
     const remainingByRef = await sql`
       SELECT reference, COUNT(*) as count
       FROM b2b_putaway
-      WHERE reference = ANY(${references})
+      WHERE reference = ANY(${references}::text[])
         AND loading_status = 'staging'
       GROUP BY reference
     `;
