@@ -47,6 +47,7 @@ interface ReferenceData {
   loading_date?: string;
   site?: string;
   store_name?: string;
+  brand?: string;
   address?: string;
   city?: string;
   province?: string;
@@ -1244,32 +1245,25 @@ export default function B2BManifestListPage() {
               {/* FILTER BAR */}
               <div className="flex flex-wrap gap-3 items-end mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Tanggal Loading Dari</label>
-                  <input
-                    type="date"
-                    value={filterStartDate}
-                    onChange={(e) => setFilterStartDate(e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Sampai</label>
-                  <input
-                    type="date"
-                    value={filterEndDate}
-                    onChange={(e) => setFilterEndDate(e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">No Resi</label>
-                  <input
-                    type="text"
-                    value={filterResi}
-                    onChange={(e) => setFilterResi(e.target.value)}
-                    placeholder="Cari resi..."
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
-                  />
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    Tanggal Loading
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500">Dari</span>
+                    <input
+                      type="date"
+                      value={filterStartDate}
+                      onChange={(e) => setFilterStartDate(e.target.value)}
+                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
+                    />
+                    <span className="text-xs text-slate-500">Sampai</span>
+                    <input
+                      type="date"
+                      value={filterEndDate}
+                      onChange={(e) => setFilterEndDate(e.target.value)}
+                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">No Invoice</label>
@@ -1354,6 +1348,9 @@ export default function B2BManifestListPage() {
                               <span className="font-mono font-bold text-xs text-slate-800">{ref.reference}</span>
                               {ref.store_name && (
                                 <span className="text-[10px] text-red-700">{ref.store_name}</span>
+                              )}
+                              {ref.brand && (
+                                <span className="text-[10px] text-green-800">{ref.brand}</span>
                               )}
                             </div>
                           </td>

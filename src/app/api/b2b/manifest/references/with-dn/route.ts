@@ -80,41 +80,41 @@ export async function GET(request: NextRequest) {
       ? `WHERE ${conditions.join(' AND ')}`
       : '';
 
-    // Build final query dengan parameterized SQL (menggunakan sql.join secara manual)
     const finalQuery = `
-      WITH putaway_agg AS (
-        SELECT reference, MAX(store_name) as store_name, MAX(site) as site
-        FROM b2b_putaway
-        WHERE deleted_at IS NULL
-        GROUP BY reference
-      ),
-      base AS (
-        SELECT 
-          mr.id,
-          mr.manifest_id,
-          mr.reference,
-          mr.resi_number,
-          mr.invoice_number,
-          mr.delivered_status,
-          mr.arrive_date,
-          mr.created_at,
-          mr.updated_at,
-          mo.delivery_number,
-          mo.vendor_name,
-          mo.loading_date,
-          TRUE as has_dn,
-          pa.store_name,
-          pa.site
-        FROM manifest_reference mr
-        INNER JOIN manifest_order mo ON mo.id = mr.manifest_id
-        LEFT JOIN putaway_agg pa ON pa.reference = mr.reference
-        ${whereClause}
-      )
-      SELECT *, COUNT(*) OVER() as total_count
-      FROM base
-      ORDER BY delivery_number ASC, reference ASC
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-    `;
+        WITH putaway_agg AS (
+          SELECT reference, MAX(store_name) as store_name, MAX(site) as site, MAX(brand) as brand
+          FROM b2b_putaway
+          WHERE deleted_at IS NULL
+          GROUP BY reference
+        ),
+        base AS (
+          SELECT 
+            mr.id,
+            mr.manifest_id,
+            mr.reference,
+            mr.resi_number,
+            mr.invoice_number,
+            mr.delivered_status,
+            mr.arrive_date,
+            mr.created_at,
+            mr.updated_at,
+            mo.delivery_number,
+            mo.vendor_name,
+            mo.loading_date,
+            TRUE as has_dn,
+            pa.store_name,
+            pa.site,
+            pa.brand
+          FROM manifest_reference mr
+          INNER JOIN manifest_order mo ON mo.id = mr.manifest_id
+          LEFT JOIN putaway_agg pa ON pa.reference = mr.reference
+          ${whereClause}
+        )
+        SELECT *, COUNT(*) OVER() as total_count
+        FROM base
+        ORDER BY delivery_number ASC, reference ASC
+        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+      `;
 
     // Eksekusi query dengan parameter array
     const rows = await sql(finalQuery, [...params, limit, offset]);
