@@ -1095,53 +1095,40 @@ const handleMarkFromSearch = async (barcode: string, reason: "NOT_FOUND" | "CANC
             </div>
           )}
 
-          {/* 🔥 LIST PAKET (Ringkasan) */}
-          <div className="max-h-40 overflow-y-auto space-y-1">
-            <div className="flex justify-between items-center px-1">
-              <p className="text-xs text-stone-400 font-medium">
-                {sessionItems.filter(i => !i.is_validated_handover).length} paket belum diverifikasi
-              </p>
-              {Object.keys(discrepancyReasons).length > 0 && (
-                <button
-                  onClick={handleResetAllDiscrepancy}
-                  className="text-[10px] text-red-500 hover:text-red-600 font-medium"
-                >
-                  🧹 Reset semua
-                </button>
+          {/* 🔥 LIST PAKET (Ringkasan) - hanya tampilkan pending */}
+            <div className="max-h-60 overflow-y-auto space-y-1">
+              <div className="flex justify-between items-center px-1">
+                <p className="text-xs text-stone-400 font-medium">
+                  {sessionItems.filter(i => !i.is_validated_handover).length} paket belum diverifikasi
+                </p>
+                {Object.keys(discrepancyReasons).length > 0 && (
+                  <button
+                    onClick={handleResetAllDiscrepancy}
+                    className="text-[10px] text-red-500 hover:text-red-600 font-medium"
+                  >
+                    🧹 Reset semua
+                  </button>
+                )}
+              </div>
+
+              {sessionItems.filter(i => !i.is_validated_handover).length === 0 ? (
+                <div className="text-center text-xs text-emerald-600 py-2">
+                  ✅ Semua paket sudah diverifikasi
+                </div>
+              ) : (
+                sessionItems
+                  .filter(item => !item.is_validated_handover)
+                  .map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-2 rounded-lg text-xs bg-white border border-stone-200"
+                    >
+                      <span className="font-mono">{item.barcode_resi}</span>
+                      <span>⏳ Pending</span>
+                    </div>
+                  ))
               )}
             </div>
-            {/* Tampilkan 5 item teratas saja */}
-            {sessionItems.slice(0, 5).map((item) => {
-              const isDiscrepancy = item.discrepancy_reason !== null;
-              return (
-                <div
-                  key={item.id}
-                  className={`flex items-center justify-between p-2 rounded-lg text-xs ${
-                    item.is_validated_handover
-                      ? isDiscrepancy
-                        ? "bg-red-50 text-red-700"
-                        : "bg-emerald-50 text-emerald-700"
-                      : "bg-white border border-stone-200"
-                  }`}
-                >
-                  <span className="font-mono">{item.barcode_resi}</span>
-                  <span>
-                    {item.is_validated_handover 
-                      ? isDiscrepancy 
-                        ? `⚠️ ${item.discrepancy_reason}`
-                        : "✅ DONE"
-                      : "⏳ Pending"
-                    }
-                  </span>
-                </div>
-              );
-            })}
-            {sessionItems.length > 5 && (
-              <p className="text-[10px] text-stone-400 text-center">
-                + {sessionItems.length - 5} paket lainnya
-              </p>
-            )}
-          </div>
 
           {/* Tombol Lanjut */}
           <button
