@@ -6,7 +6,7 @@ import {
   Search,
   Download,
   RefreshCw,
-  CheckCircle,
+  CheckCircle2,
   XCircle,
   AlertCircle,
   ChevronLeft,
@@ -18,8 +18,11 @@ import {
   Activity,
   Zap,
   Package,
+  Clock,
+  Scan,
+  TrendingUp,
 } from "lucide-react";
-import showToast, { withToast } from '@/lib/toast';
+import showToast from '@/lib/toast';
 
 // =========================================================
 // Tipe data
@@ -56,7 +59,7 @@ interface Manifest {
   signed_at: string;
 }
 
-    interface SortingDetail {
+interface SortingDetail {
   id: string;
   barcode_resi: string;
   scanned_at: string;
@@ -68,7 +71,7 @@ interface Manifest {
   transporter_name: string;
   source_type: "sorting" | "instant";
   instant_status?: "STORED" | "PICKED" | null;
-   sorting_by_name?: string | null;
+  sorting_by_name?: string | null;
 }
 
 interface SortingStats {
@@ -105,7 +108,7 @@ function PaginationBar({
 
   return (
     <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-t border-slate-200">
-      <div className="text-xs text-slate-500">
+      <div className="text-xs text-slate-500 font-medium">
         Menampilkan {(page - 1) * limit + 1} - {Math.min(page * limit, total)} dari {total} data
       </div>
       <div className="flex items-center gap-1">
@@ -118,7 +121,7 @@ function PaginationBar({
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
-        <span className="text-xs text-slate-500 px-2">
+        <span className="text-xs text-slate-500 px-2 font-bold">
           {page} / {totalPages}
         </span>
         <button
@@ -136,7 +139,7 @@ function PaginationBar({
 }
 
 // =========================================================
-// TAB: Sorting Session (monitoring sorting_details + instant_packages)
+// TAB: Sorting Session
 // =========================================================
 function SortingSessionTab() {
   const [rows, setRows] = useState<SortingDetail[]>([]);
@@ -182,7 +185,6 @@ function SortingSessionTab() {
     setPage(1);
   }, [search, statusFilter]);
 
-  // 🔥 Export Sorting Details
   const handleExportSorting = async () => {
     setExporting(true);
     try {
@@ -216,29 +218,27 @@ function SortingSessionTab() {
     }
   };
 
-  // Helper untuk render badge source
   const renderSourceBadge = (sourceType: string) => {
     if (sourceType === "instant") {
       return (
-        <span className="inline-flex items-center gap-1 text-xs font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">
           <Zap className="w-3 h-3" />
           Instant
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 text-xs font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
         <Package className="w-3 h-3" />
         Regular
       </span>
     );
   };
 
-  // Helper untuk render status handover
   const renderHandoverStatus = (row: SortingDetail) => {
     if (row.discrepancy_reason) {
       return (
-        <span className="inline-flex items-center gap-1 text-xs font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
           <AlertCircle className="w-3 h-3" /> {row.discrepancy_reason}
         </span>
       );
@@ -246,26 +246,26 @@ function SortingSessionTab() {
     if (row.source_type === "instant") {
       if (row.instant_status === "PICKED") {
         return (
-          <span className="inline-flex items-center gap-1 text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-            <CheckCircle className="w-3 h-3" /> Sudah
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+            <CheckCircle2 className="w-3 h-3" /> Sudah
           </span>
         );
       }
       return (
-        <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+        <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
           Belum
         </span>
       );
     }
     if (row.is_validated_handover) {
       return (
-        <span className="inline-flex items-center gap-1 text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-          <CheckCircle className="w-3 h-3" /> Sudah
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+          <CheckCircle2 className="w-3 h-3" /> Sudah
         </span>
       );
     }
     return (
-      <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+      <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
         Belum
       </span>
     );
@@ -273,33 +273,34 @@ function SortingSessionTab() {
 
   return (
     <div className="space-y-4">
+      {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div className="bg-white p-3 rounded-xl border border-slate-200 text-center">
-            <p className="text-xl font-bold text-slate-800">{stats.total || 0}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Total Scan</p>
+          <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm text-center">
+            <p className="text-2xl font-extrabold text-slate-800 leading-none">{stats.total || 0}</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Total Scan</p>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-emerald-200 text-center">
-            <p className="text-xl font-bold text-emerald-600">{stats.handed_over || 0}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Sudah Handover</p>
+          <div className="bg-white p-3 rounded-2xl border border-emerald-200 shadow-sm text-center">
+            <p className="text-2xl font-extrabold text-emerald-600 leading-none">{stats.handed_over || 0}</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Sudah Handover</p>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-amber-200 text-center">
-            <p className="text-xl font-bold text-amber-600">{stats.pending || 0}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Belum Handover</p>
+          <div className="bg-white p-3 rounded-2xl border border-amber-200 shadow-sm text-center">
+            <p className="text-2xl font-extrabold text-amber-600 leading-none">{stats.pending || 0}</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Belum Handover</p>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-red-200 text-center">
-            <p className="text-xl font-bold text-red-600">{stats.discrepancy || 0}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Discrepancy</p>
+          <div className="bg-white p-3 rounded-2xl border border-rose-200 shadow-sm text-center">
+            <p className="text-2xl font-extrabold text-rose-600 leading-none">{stats.discrepancy || 0}</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Discrepancy</p>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-blue-200 text-center">
-            <p className="text-xl font-bold text-blue-600">{stats.in_running_session || 0}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Di Sesi Running</p>
+          <div className="bg-white p-3 rounded-2xl border border-blue-200 shadow-sm text-center">
+            <p className="text-2xl font-extrabold text-blue-600 leading-none">{stats.in_running_session || 0}</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Di Sesi Running</p>
           </div>
         </div>
       )}
 
-      {/* 🔥 TOOLBAR dengan tombol Export */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row gap-3">
+      {/* Toolbar */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row gap-3">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -307,7 +308,7 @@ function SortingSessionTab() {
             placeholder="Cari nomor resi, session code, atau transporter..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0B2B4A] focus:bg-white transition-all"
           />
         </div>
 
@@ -316,103 +317,111 @@ function SortingSessionTab() {
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
-              className={`px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors ${
+              className={`px-3 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
                 statusFilter === s
-                  ? "bg-[#0B2B4A] text-white"
+                  ? "bg-[#0B2B4A] text-white shadow-md shadow-[#0B2B4A]/20"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
-              {s === "all" ? "Semua Sesi" : s === "running" ? "Running" : "Closed"}
+              {s === "all" ? "Semua" : s === "running" ? "Running" : "Closed"}
             </button>
           ))}
         </div>
 
-        {/* 🔥 Tombol Export dengan dropdown */}
         <div className="flex gap-2">
           <div className="relative">
             <button
               onClick={() => setShowExportOptions(!showExportOptions)}
-              className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium flex items-center gap-1 transition-colors"
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-md shadow-emerald-600/20"
             >
               <Download className="w-4 h-4" />
               Export
             </button>
             {showExportOptions && (
-              <div className="absolute right-0 mt-2 bg-white border border-slate-200 rounded-lg shadow-lg z-10 w-48">
+              <div className="absolute right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-lg z-10 w-48 overflow-hidden">
                 <button
                   onClick={handleExportSorting}
                   disabled={exporting}
-                  className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
+                  className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
                 >
                   <FileText className="w-4 h-4" />
                   {exporting ? 'Mengexport...' : 'Sorting Details'}
                 </button>
-                {/* Jika nanti mau tambah opsi export lain, tambahkan di sini */}
               </div>
             )}
           </div>
 
           <button
             onClick={fetchData}
-            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors"
+            className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors"
+            title="Refresh"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
 
-      {/* Tabel */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Resi</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Session</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Transporter</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Source</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Sesi</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Handover</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Sorting By</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Scanned At</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Resi</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Session</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Transporter</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Source</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sesi</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Handover</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sorting By</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Scanned At</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-5 h-5 border-2 border-[#0B2B4A] border-t-transparent rounded-full animate-spin"></div>
-                      Loading...
+                  <td colSpan={8} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-6 h-6 border-2 border-[#0B2B4A] border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-xs text-slate-400 font-medium">Loading...</span>
                     </div>
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
-                    {search ? "Tidak ada resi yang cocok" : "Belum ada data sorting"}
+                  <td colSpan={8} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <Scan className="w-8 h-8 text-slate-300" />
+                      <span className="text-sm text-slate-500 font-medium">
+                        {search ? "Tidak ada resi yang cocok" : "Belum ada data sorting"}
+                      </span>
+                    </div>
                   </td>
                 </tr>
               ) : (
                 rows.map((r) => (
                   <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-2">
-                      <span className="font-mono text-sm font-semibold text-slate-800">{r.barcode_resi}</span>
+                    <td className="px-4 py-2.5">
+                      <span className="font-mono text-xs font-bold text-slate-800">{r.barcode_resi}</span>
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2.5">
                       <span className="font-mono text-xs text-slate-600">{r.session_code}</span>
                     </td>
-                    <td className="px-4 py-2 text-sm text-slate-600">{r.transporter_name || "-"}</td>
-                    <td className="px-4 py-2">{renderSourceBadge(r.source_type)}</td>
-                    <td className="px-4 py-2">
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${r.session_status === "RUNNING" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
+                    <td className="px-4 py-2.5 text-xs text-slate-600 font-medium">{r.transporter_name || "-"}</td>
+                    <td className="px-4 py-2.5">{renderSourceBadge(r.source_type)}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        r.session_status === "RUNNING" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"
+                      }`}>
                         {r.session_status}
                       </span>
                     </td>
-                    <td className="px-4 py-2">{renderHandoverStatus(r)}</td>
-                    <td className="px-4 py-2 text-sm text-slate-600">{r.sorting_by_name || '-'}</td>   {/* ✅ tambahkan */}
-                    <td className="px-4 py-2 text-xs text-slate-500">
-                      {new Date(r.scanned_at).toLocaleString("id-ID")}
+                    <td className="px-4 py-2.5">{renderHandoverStatus(r)}</td>
+                    <td className="px-4 py-2.5 text-xs text-slate-600 font-medium">{r.sorting_by_name || '-'}</td>
+                    <td className="px-4 py-2.5 text-xs text-slate-500">
+                      {new Date(r.scanned_at).toLocaleString("id-ID", {
+                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+                      })}
                     </td>
                   </tr>
                 ))
@@ -427,7 +436,7 @@ function SortingSessionTab() {
 }
 
 // =========================================================
-// TAB: Handover Manifest (existing, dipindah dari /admin/manifest)
+// TAB: Handover Manifest
 // =========================================================
 function ManifestTab() {
   const [manifests, setManifests] = useState<Manifest[]>([]);
@@ -481,7 +490,8 @@ function ManifestTab() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-center gap-3">
+      {/* Toolbar */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -489,72 +499,78 @@ function ManifestTab() {
             placeholder="Cari manifest (session code, transporter, kurir)..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0B2B4A] focus:bg-white transition-all"
           />
         </div>
         <button
           onClick={fetchManifests}
-          className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors"
+          className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Session Code</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Transporter</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Kurir / Security</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Paket / Discrepancy</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tanggal</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Aksi</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Session Code</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Transporter</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Kurir / Security</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Paket / Discrepancy</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tanggal</th>
+                <th className="text-right px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500 text-sm">
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-5 h-5 border-2 border-[#0B2B4A] border-t-transparent rounded-full animate-spin"></div>
-                      Loading...
+                  <td colSpan={6} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-6 h-6 border-2 border-[#0B2B4A] border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-xs text-slate-400 font-medium">Loading...</span>
                     </div>
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500 text-sm">
-                    {searchTerm ? "Tidak ada manifest yang sesuai" : "Belum ada manifest"}
+                  <td colSpan={6} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <FileText className="w-8 h-8 text-slate-300" />
+                      <span className="text-sm text-slate-500 font-medium">
+                        {searchTerm ? "Tidak ada manifest yang sesuai" : "Belum ada manifest"}
+                      </span>
+                    </div>
                   </td>
                 </tr>
               ) : (
                 filtered.map((m) => (
                   <tr key={m.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3">
-                      <span className="font-mono text-sm font-semibold text-slate-800">{m.session_code}</span>
+                      <span className="font-mono text-xs font-bold text-slate-800">{m.session_code}</span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{m.transporter_name}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <p className="font-medium text-slate-800">{m.courier_name}</p>
-                      <p className="text-xs text-slate-500">Security: {m.security_name}</p>
+                    <td className="px-4 py-3 text-xs text-slate-600 font-medium">{m.transporter_name}</td>
+                    <td className="px-4 py-3 text-xs">
+                      <p className="font-bold text-slate-800">{m.courier_name}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Security: {m.security_name}</p>
                     </td>
-                    <td className="px-4 py-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-emerald-600">
+                    <td className="px-4 py-3 text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-extrabold text-emerald-600 text-sm">
                           {m.total_packages_handed - m.total_discrepancy}
                         </span>
                         <span className="text-slate-300">/</span>
-                        <span className="text-slate-600">{m.total_packages_handed}</span>
+                        <span className="text-slate-600 font-semibold">{m.total_packages_handed}</span>
                         {m.total_discrepancy > 0 && (
-                          <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
-                            {m.total_discrepancy} discrepancy
+                          <span className="text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded-full font-bold ml-1">
+                            {m.total_discrepancy}
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-500">
+                    <td className="px-4 py-3 text-[11px] text-slate-500 font-medium">
                       {new Date(m.signed_at).toLocaleDateString("id-ID", {
                         day: "2-digit",
                         month: "short",
@@ -564,27 +580,27 @@ function ManifestTab() {
                       })}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-1">
                         <Link
                           href={`/admin/manifest/${m.id}`}
-                          className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                          className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
                           title="Lihat Detail"
                         >
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-3.5 h-3.5" />
                         </Link>
                         <button
                           onClick={() => handleExportExcel(m.id)}
-                          className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg transition-colors"
+                          className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
                           title="Export Excel"
                         >
-                          <Download className="w-4 h-4" />
+                          <Download className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => window.open(`/print/manifest/${m.id}`, "_blank")}
-                          className="p-1.5 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
+                          className="p-2 text-violet-500 hover:bg-violet-50 rounded-lg transition-colors"
                           title="Print"
                         >
-                          <Printer className="w-4 h-4" />
+                          <Printer className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </td>
@@ -610,7 +626,7 @@ function HistoryTab() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterInstant, setFilterInstant] = useState<"all" | "instant" | "regular">("all");
   const [page, setPage] = useState(1);
-  const [exporting, setExporting] = useState(false); // ✅ TAMBAHKAN
+  const [exporting, setExporting] = useState(false);
   const limit = 20;
 
   const fetchHistory = useCallback(async () => {
@@ -645,21 +661,20 @@ function HistoryTab() {
     setPage(1);
   }, [searchTerm, filterInstant]);
 
-  // 🔥 PERBAIKI: Export CSV - ambil semua data dari API export
   const handleExportCSV = async () => {
     setExporting(true);
     try {
       let url = `/api/admin/history/export`;
       const params = new URLSearchParams();
-      
+
       if (searchTerm) params.append('search', searchTerm);
       if (filterInstant === 'instant') params.append('is_instant', 'true');
       else if (filterInstant === 'regular') params.append('is_instant', 'false');
-      
+
       if (params.toString()) url += `?${params.toString()}`;
 
       const res = await fetch(url);
-      
+
       if (res.ok) {
         const blob = await res.blob();
         const downloadUrl = window.URL.createObjectURL(blob);
@@ -686,48 +701,50 @@ function HistoryTab() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "DONE":
-        return <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full text-xs font-medium w-fit"><CheckCircle className="w-3 h-3" /> Done</span>;
+        return <span className="inline-flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] font-bold w-fit"><CheckCircle2 className="w-3 h-3" /> Done</span>;
       case "CANCELLED":
-        return <span className="flex items-center gap-1 text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full text-xs font-medium w-fit"><AlertCircle className="w-3 h-3" /> Cancel</span>;
+        return <span className="inline-flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full text-[10px] font-bold w-fit"><AlertCircle className="w-3 h-3" /> Cancel</span>;
       case "NOT_FOUND":
-        return <span className="flex items-center gap-1 text-red-600 bg-red-50 px-2 py-0.5 rounded-full text-xs font-medium w-fit"><XCircle className="w-3 h-3" /> Not Found</span>;
+        return <span className="inline-flex items-center gap-1 text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full text-[10px] font-bold w-fit"><XCircle className="w-3 h-3" /> Not Found</span>;
       default:
-        return <span className="text-xs text-slate-500">{status}</span>;
+        return <span className="text-[10px] text-slate-500 font-medium">{status}</span>;
     }
   };
 
   return (
     <div className="space-y-4">
+      {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-          <div className="bg-white p-3 rounded-xl border border-slate-200 text-center">
-            <p className="text-xl font-bold text-slate-800">{stats.total}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Total</p>
+          <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm text-center">
+            <p className="text-2xl font-extrabold text-slate-800 leading-none">{stats.total}</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Total</p>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-slate-200 text-center">
-            <p className="text-xl font-bold text-emerald-600">{stats.done}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Done</p>
+          <div className="bg-white p-3 rounded-2xl border border-emerald-200 shadow-sm text-center">
+            <p className="text-2xl font-extrabold text-emerald-600 leading-none">{stats.done}</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Done</p>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-slate-200 text-center">
-            <p className="text-xl font-bold text-yellow-600">{stats.cancelled}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Cancel</p>
+          <div className="bg-white p-3 rounded-2xl border border-amber-200 shadow-sm text-center">
+            <p className="text-2xl font-extrabold text-amber-600 leading-none">{stats.cancelled}</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Cancel</p>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-slate-200 text-center">
-            <p className="text-xl font-bold text-red-600">{stats.not_found}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Not Found</p>
+          <div className="bg-white p-3 rounded-2xl border border-rose-200 shadow-sm text-center">
+            <p className="text-2xl font-extrabold text-rose-600 leading-none">{stats.not_found}</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Not Found</p>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-blue-200 text-center">
-            <p className="text-xl font-bold text-blue-600">{stats.instant}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Instant</p>
+          <div className="bg-white p-3 rounded-2xl border border-blue-200 shadow-sm text-center">
+            <p className="text-2xl font-extrabold text-blue-600 leading-none">{stats.instant}</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Instant</p>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-orange-200 text-center">
-            <p className="text-xl font-bold text-orange-600">{stats.regular}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Regular</p>
+          <div className="bg-white p-3 rounded-2xl border border-orange-200 shadow-sm text-center">
+            <p className="text-2xl font-extrabold text-orange-600 leading-none">{stats.regular}</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Regular</p>
           </div>
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row gap-3">
+      {/* Toolbar */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row gap-3">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -735,7 +752,7 @@ function HistoryTab() {
             placeholder="Cari resi, session code, atau transporter..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0B2B4A] focus:border-transparent"
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0B2B4A] focus:bg-white transition-all"
           />
         </div>
         <div className="flex gap-2">
@@ -743,19 +760,20 @@ function HistoryTab() {
             <button
               key={f}
               onClick={() => setFilterInstant(f)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filterInstant === f ? "bg-[#0B2B4A] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              className={`px-3 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
+                filterInstant === f
+                  ? "bg-[#0B2B4A] text-white shadow-md shadow-[#0B2B4A]/20"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
               {f === "all" ? "Semua" : f === "instant" ? "Instant" : "Regular"}
             </button>
           ))}
         </div>
-        {/* 🔥 PERBAIKI: Tombol Export dengan state loading */}
         <button
           onClick={handleExportCSV}
           disabled={exporting}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-emerald-600/20"
         >
           {exporting ? (
             <>
@@ -771,61 +789,73 @@ function HistoryTab() {
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Session Code</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Resi Number</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Transporter</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Location</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Handover By</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tanggal</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Session Code</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Resi Number</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Transporter</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Type</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Location</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Handover By</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tanggal</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-5 h-5 border-2 border-[#0B2B4A] border-t-transparent rounded-full animate-spin"></div>
-                      Loading...
+                  <td colSpan={8} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-6 h-6 border-2 border-[#0B2B4A] border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-xs text-slate-400 font-medium">Loading...</span>
                     </div>
                   </td>
                 </tr>
               ) : history.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500 text-sm">
-                    {searchTerm ? "Tidak ada data yang sesuai" : "Belum ada history logs"}
+                  <td colSpan={8} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <Clock className="w-8 h-8 text-slate-300" />
+                      <span className="text-sm text-slate-500 font-medium">
+                        {searchTerm ? "Tidak ada data yang sesuai" : "Belum ada history logs"}
+                      </span>
+                    </div>
                   </td>
                 </tr>
               ) : (
                 history.map((h) => (
                   <tr key={h.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-2">
-                      <span className="font-mono text-sm font-medium text-slate-800">{h.session_code}</span>
+                    <td className="px-4 py-2.5">
+                      <span className="font-mono text-xs font-bold text-slate-800">{h.session_code}</span>
                     </td>
-                    <td className="px-4 py-2">
-                      <span className="font-mono text-sm text-slate-600">{h.resi_number}</span>
+                    <td className="px-4 py-2.5">
+                      <span className="font-mono text-xs text-slate-600">{h.resi_number}</span>
                     </td>
-                    <td className="px-4 py-2 text-sm text-slate-600">{h.transporter_name}</td>
-                    <td className="px-4 py-2">{getStatusBadge(h.status)}</td>
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2.5 text-xs text-slate-600 font-medium">{h.transporter_name}</td>
+                    <td className="px-4 py-2.5">{getStatusBadge(h.status)}</td>
+                    <td className="px-4 py-2.5">
                       {h.is_instant ? (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Instant</span>
+                        <span className="inline-flex items-center gap-1 text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-bold">
+                          <Zap className="w-3 h-3" /> Instant
+                        </span>
                       ) : (
-                        <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">Regular</span>
+                        <span className="inline-flex items-center gap-1 text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold">
+                          <Package className="w-3 h-3" /> Regular
+                        </span>
                       )}
                     </td>
-                    <td className="px-4 py-2">
-                      <span className="text-sm font-mono text-blue-600">{h.location_code || "-"}</span>
+                    <td className="px-4 py-2.5">
+                      <span className="text-xs font-mono font-bold text-blue-600">{h.location_code || "-"}</span>
                     </td>
-                    <td className="px-4 py-2 text-sm text-slate-600">{h.handover_by || "-"}</td>
-                    <td className="px-4 py-2 text-sm text-slate-500">
-                      {new Date(h.handover_at).toLocaleString("id-ID")}
+                    <td className="px-4 py-2.5 text-xs text-slate-600 font-medium">{h.handover_by || "-"}</td>
+                    <td className="px-4 py-2.5 text-[11px] text-slate-500">
+                      {new Date(h.handover_at).toLocaleString("id-ID", {
+                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+                      })}
                     </td>
                   </tr>
                 ))
@@ -840,57 +870,65 @@ function HistoryTab() {
 }
 
 // =========================================================
-// PAGE UTAMA — 3 tab, mengikuti pola halaman B2B
+// PAGE UTAMA
 // =========================================================
 export default function B2CAdminPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("sorting");
 
+  const tabs = [
+    { key: "sorting" as TabKey, label: "Sorting Session", icon: Activity },
+    { key: "manifest" as TabKey, label: "Handover Manifest", icon: List },
+    { key: "history" as TabKey, label: "History Logs", icon: FileText },
+  ];
+
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">Operasional B2C</h1>
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#0B2B4A] to-[#1a3d5c] flex items-center justify-center shadow-lg shadow-[#0B2B4A]/20 flex-shrink-0">
+          <TrendingUp className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h1 className="text-xl font-extrabold text-slate-900 leading-tight">
+            Operasional B2C
+          </h1>
+          <p className="text-xs text-slate-500 font-medium">
+            Monitoring sorting, handover & history paket retail
+          </p>
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="border-b border-slate-200">
-          <div className="flex">
-            <button
-              onClick={() => setActiveTab("sorting")}
-              className={`px-6 py-3 text-sm font-semibold transition-colors flex items-center gap-2 ${
-                activeTab === "sorting"
-                  ? "text-[#0B2B4A] border-b-2 border-[#0B2B4A]"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              <Activity className="w-4 h-4" />
-              Sorting Session
-            </button>
-            <button
-              onClick={() => setActiveTab("manifest")}
-              className={`px-6 py-3 text-sm font-semibold transition-colors flex items-center gap-2 ${
-                activeTab === "manifest"
-                  ? "text-[#0B2B4A] border-b-2 border-[#0B2B4A]"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              <List className="w-4 h-4" />
-              Handover Manifest
-            </button>
-            <button
-              onClick={() => setActiveTab("history")}
-              className={`px-6 py-3 text-sm font-semibold transition-colors flex items-center gap-2 ${
-                activeTab === "history"
-                  ? "text-[#0B2B4A] border-b-2 border-[#0B2B4A]"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              History Logs
-            </button>
+      {/* Tab Container */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        {/* Tab Navigation */}
+        <div className="border-b border-slate-200 bg-slate-50/50">
+          <div className="flex overflow-x-auto">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`relative px-5 py-3.5 text-xs font-bold transition-colors flex items-center gap-2 whitespace-nowrap ${
+                    isActive
+                      ? "text-[#0B2B4A]"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {tab.label}
+                  {isActive && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0B2B4A] rounded-full"></span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="p-4">
+        {/* Tab Content */}
+        <div className="p-5">
           {activeTab === "sorting" && <SortingSessionTab />}
           {activeTab === "manifest" && <ManifestTab />}
           {activeTab === "history" && <HistoryTab />}

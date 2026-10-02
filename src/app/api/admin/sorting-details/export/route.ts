@@ -19,49 +19,91 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || '';
     const sessionStatus = searchParams.get('session_status') || 'all';
 
-    // Query dasar
+    // 🔥 Gabungan dari sorting_details + instant_packages via UNION ALL
+    // Kolom disamakan jumlah & tipe-nya:
+    //   - session_code      (text)
+    //   - barcode_resi      (text)
+    //   - transporter_name  (text)
+    //   - scanned_at        (timestamptz)
+    //   - handover_status   (text: "Sudah" | "Belum")
+    //   - discrepancy_reason(text | null)
+    //   - validated_at      (timestamptz | null)
+    //   - sorting_by_name   (text | null)
+    //   - source_type       (text: "sorting" | "instant") — untuk filter opsional
     let query = `
-      SELECT 
-        ss.session_code,
-        sd.barcode_resi,
-        mt.transporter_name,
-        sd.scanned_at,
-        sd.is_validated_handover,
-        sd.discrepancy_reason,
-        sd.validated_at,
-        u.full_name as sorting_by_name
-      FROM sorting_details sd
-      JOIN sorting_sessions ss ON ss.id = sd.session_id
-      LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
-      LEFT JOIN users u ON u.id = sd.sorting_by
+      SELECT * FROM (
+        -- 1) Sorting Details
+        SELECT 
+          ss.session_code::text         AS session_code,
+          sd.barcode_resi::text         AS barcode_resi,
+          COALESCE(mt.transporter_name, '-')::text AS transporter_name,
+          sd.scanned_at                 AS scanned_at,
+          CASE 
+            WHEN sd.is_validated_handover = true THEN 'Sudah'
+            ELSE 'Belum'
+          END::text                     AS handover_status,
+          sd.discrepancy_reason::text   AS discrepancy_reason,
+          sd.validated_at               AS validated_at,
+          u.full_name::text             AS sorting_by_name,
+          'sorting'::text               AS source_type,
+          ss.status::text               AS session_status
+        FROM sorting_details sd
+        JOIN sorting_sessions ss ON ss.id = sd.session_id
+        LEFT JOIN master_transporters mt ON mt.id = ss.transporter_id
+        LEFT JOIN users u ON u.id = sd.sorting_by
+        WHERE 1=1
+
+        UNION ALL
+
+        -- 2) Instant Packages
+        SELECT
+          ('INST-' || TO_CHAR(ip.putaway_at, 'YYYY-MM-DD'))::text AS session_code,
+          ip.barcode_resi::text         AS barcode_resi,
+          COALESCE(mt.transporter_name, '-')::text AS transporter_name,
+          ip.putaway_at                 AS scanned_at,
+          CASE
+            WHEN ip.status = 'PICKED' THEN 'Sudah'
+            ELSE 'Belum'
+          END::text                     AS handover_status,
+          NULL::text                    AS discrepancy_reason,
+          ip.picked_at                  AS validated_at,
+          u.full_name::text             AS sorting_by_name,
+          'instant'::text               AS source_type,
+          'RUNNING'::text               AS session_status
+        FROM instant_packages ip
+        LEFT JOIN master_transporters mt ON mt.id = ip.transporter_id
+        LEFT JOIN users u ON u.id = ip.putaway_by
+        WHERE ip.status IN ('STORED', 'PICKED')
+      ) combined
       WHERE 1=1
     `;
 
     const params: any[] = [];
     let paramIndex = 1;
 
-    // Filter search (gunakan satu placeholder untuk tiga kolom)
+    // Filter search (berlaku untuk kedua sumber)
     if (search) {
       const searchPattern = `%${search}%`;
-      query += ` AND (sd.barcode_resi ILIKE $${paramIndex} OR ss.session_code ILIKE $${paramIndex} OR mt.transporter_name ILIKE $${paramIndex})`;
+      query += ` AND (barcode_resi ILIKE $${paramIndex} OR session_code ILIKE $${paramIndex} OR transporter_name ILIKE $${paramIndex})`;
       params.push(searchPattern);
       paramIndex++;
     }
 
-    // Filter status session
+    // Filter status session — hanya berlaku untuk sorting_details.
+    // Instant selalu dianggap RUNNING, jadi kalau filter = 'closed', instant dikecualikan.
     if (sessionStatus === 'running') {
-      query += ` AND ss.status = $${paramIndex}`;
+      query += ` AND session_status = $${paramIndex}`;
       params.push('RUNNING');
       paramIndex++;
     } else if (sessionStatus === 'closed') {
-      query += ` AND ss.status = $${paramIndex}`;
-      params.push('CLOSED');
-      paramIndex++;
+      query += ` AND session_status = $${paramIndex} AND source_type = $${paramIndex + 1}`;
+      params.push('CLOSED', 'sorting');
+      paramIndex += 2;
     }
 
-    query += ` ORDER BY sd.scanned_at DESC`;
+    query += ` ORDER BY scanned_at DESC`;
 
-    // Eksekusi query — panggil sql sebagai function, BUKAN sql.query(...)
+    // Eksekusi query
     const rows = await sql(query, params);
 
     // Format CSV
@@ -76,9 +118,6 @@ export async function GET(request: NextRequest) {
       'Sorting By'
     ];
 
-    // Bungkus tiap field dalam tanda kutip agar koma di dalam value
-    // (mis. hasil toLocaleString "22/8/2026, 17.51.20") tidak dianggap
-    // sebagai pemisah kolom oleh Excel.
     const escapeCsvField = (value: unknown) => {
       const str = String(value ?? '');
       return `"${str.replace(/"/g, '""')}"`;
@@ -89,7 +128,7 @@ export async function GET(request: NextRequest) {
       r.barcode_resi || '',
       r.transporter_name || '',
       new Date(r.scanned_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }),
-      r.is_validated_handover ? 'Sudah' : 'Belum',
+      r.handover_status || 'Belum',
       r.discrepancy_reason || '-',
       r.validated_at ? new Date(r.validated_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : '-',
       r.sorting_by_name || '-'
@@ -100,7 +139,6 @@ export async function GET(request: NextRequest) {
       ...csvRows.map((row: string[]) => row.map(escapeCsvField).join(','))
     ].join('\n');
 
-    // Tambahkan BOM agar karakter khusus tampil benar di Excel Windows
     return new NextResponse('\ufeff' + csvContent, {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',

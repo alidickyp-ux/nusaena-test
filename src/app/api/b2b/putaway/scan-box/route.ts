@@ -26,28 +26,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 🔥 Trim input
+    const cleanReference = String(reference).trim();
+    const cleanBoxId = String(box_id).trim();
+    const cleanSite = String(site).trim();
+
     // 🔥 Parse box_id
     // Format: PCB23-26002071BOX-01-15.6
     //   - box_number = kode satuan + nomor (BOX-01, KAR-01, DUS-01, dst),
     //     ditangkap generic sebagai [huruf][optional "-"][angka]
     //   - weight = angka di AKHIR string, setelah pemisah terakhir "-" atau "#"
-    const weightMatch = box_id.match(/[-#]([\d.]+)$/);
+    const weightMatch = cleanBoxId.match(/[-#]([\d.]+)$/);
     const weight = weightMatch ? weightMatch[1] : null;
 
-    const boxNumberMatch = box_id.match(/([A-Z]+-?\d+)(?=[-#][\d.]+$)/i);
-    const boxNumber = boxNumberMatch ? boxNumberMatch[1] : box_id.slice(0, 50);
+    const boxNumberMatch = cleanBoxId.match(/([A-Z]+-?\d+)(?=[-#][\d.]+$)/i);
+    const boxNumber = boxNumberMatch ? boxNumberMatch[1] : cleanBoxId.slice(0, 50);
 
-    const cleanSite = String(site).trim();
-
-    // 🔥 existingBox check & storeData lookup enggak saling bergantung,
-    // jadi dijalankan paralel (Promise.all) supaya cuma 1 round-trip "wall time"
-    // alih-alih 2 round-trip berurutan
+    // 🔥 existingBox check & storeData lookup paralel (Promise.all)
     const [existingBox, storeData] = await Promise.all([
-      sql`SELECT id FROM b2b_putaway WHERE box_id = ${box_id}`,
+      sql`SELECT id FROM b2b_putaway WHERE box_id = ${cleanBoxId}`,
       sql`
         SELECT store_name, address, city, province
         FROM master_store
-        WHERE UPPER(site) = UPPER(${cleanSite}) AND is_active = true
+        WHERE UPPER(TRIM(site)) = UPPER(${cleanSite}) AND is_active = true
         LIMIT 1
       `,
     ]);
@@ -59,10 +60,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const store = storeData[0] || {};
+    // 🔥 VALIDASI BARU: Site HARUS terdaftar di master_store
+    if (storeData.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `❌ Site "${cleanSite}" tidak terdaftar di master store. Update dulu di master store sebelum melakukan putaway.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const store = storeData[0];
 
     // 🔥 Insert ke b2b_putaway sekaligus hitung total_box dalam reference yang sama
-    // lewat subquery di RETURNING, jadi enggak perlu query COUNT(*) terpisah setelahnya
     const result = await sql`
       INSERT INTO b2b_putaway (
         reference,
@@ -78,8 +89,8 @@ export async function POST(request: NextRequest) {
         putaway_by,
         loading_status
       ) VALUES (
-        ${reference},
-        ${box_id},
+        ${cleanReference},
+        ${cleanBoxId},
         ${boxNumber},
         ${weight},
         ${cleanSite},
@@ -93,7 +104,7 @@ export async function POST(request: NextRequest) {
       )
       RETURNING
         id, reference, box_id, box_number, weight, site, staging_location, loading_status,
-        (SELECT COUNT(*) FROM b2b_putaway WHERE reference = ${reference}) AS total_box
+        (SELECT COUNT(*) FROM b2b_putaway WHERE reference = ${cleanReference}) AS total_box
     `;
 
     const row = result[0];
