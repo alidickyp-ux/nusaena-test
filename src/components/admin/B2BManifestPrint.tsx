@@ -44,10 +44,14 @@ const BOX_PER_PAGE = 60;
 const VEHICLE_TYPES = ["Motor", "Pickup", "Blindvan", "CDE", "CDD", "Fuso"];
 
 export default function B2BManifestPrint({ manifest, details }: B2BManifestPrintProps) {
-  const totalPages = Math.max(1, Math.ceil(details.length / BOX_PER_PAGE));
-  const headerInfo = details.find((d) => d.driver) || details[0];
+  // 🔥 Null safety: pastikan details selalu array
+  const safeDetails = Array.isArray(details) ? details : [];
+  const totalPages = Math.max(1, Math.ceil(safeDetails.length / BOX_PER_PAGE));
+  
+  // 🔥 Null safety: headerInfo bisa undefined
+  const headerInfo = safeDetails.find((d) => d?.driver) || safeDetails[0] || null;
 
-  const tanggalLoading = manifest.loading_date
+  const tanggalLoading = manifest?.loading_date
     ? new Date(manifest.loading_date).toLocaleString("id-ID", {
         day: "2-digit",
         month: "long",
@@ -58,27 +62,35 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
     : "-";
 
   // Group details by reference
-  const referenceSummaryMap = details.reduce((acc, d) => {
-    if (!acc[d.reference]) {
-      acc[d.reference] = {
-        store_name: d.store_name,
+  const referenceSummaryMap = safeDetails.reduce((acc, d) => {
+    // 🔥 Skip jika reference null/undefined
+    const ref = d?.reference || "UNKNOWN";
+    
+    if (!acc[ref]) {
+      acc[ref] = {
+        store_name: d?.store_name || "-",
         total_box: 0,
         total_weight: 0,
       };
     }
-    acc[d.reference].total_box += 1;
-    acc[d.reference].total_weight += parseFloat(d.weight || "0");
+    acc[ref].total_box += 1;
+    // 🔥 parseFloat dengan fallback agar tidak NaN
+    const w = parseFloat(d?.weight || "0");
+    acc[ref].total_weight += isNaN(w) ? 0 : w;
     return acc;
   }, {} as Record<string, { store_name: string; total_box: number; total_weight: number }>);
 
   // Ubah ke array dan urutkan berdasarkan store_name
   const referenceSummary = Object.entries(referenceSummaryMap).map(([reference, data]) => ({
     reference,
-    store_name: data.store_name,
+    store_name: data.store_name || "-",
     total_box: data.total_box,
     total_weight: data.total_weight,
   }));
-  referenceSummary.sort((a, b) => a.store_name.localeCompare(b.store_name));
+  // 🔥 Null safety pada localeCompare
+  referenceSummary.sort((a, b) => 
+    (a.store_name || "").localeCompare(b.store_name || "")
+  );
 
   const SignatureCard = ({
     label,
@@ -138,7 +150,7 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
         body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .print-page {
           width: 210mm;
-          height: 297mm; /* ← tinggi tetap agar footer selalu di bawah */
+          height: 297mm;
           padding: 15mm;
           display: flex;
           flex-direction: column;
@@ -147,12 +159,12 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
         }
         .print-page:last-child { page-break-after: auto; }
         .print-body {
-          flex: 1; /* mengisi ruang kosong */
+          flex: 1;
           display: flex;
           flex-direction: column;
         }
         .print-footer {
-          margin-top: auto; /* dorong ke bawah */
+          margin-top: auto;
           page-break-inside: avoid;
         }
         .note-list {
@@ -170,7 +182,7 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
 
       {Array.from({ length: totalPages }).map((_, pageIndex) => {
         const isLastPage = pageIndex === totalPages - 1;
-        const pageItems = details.slice(
+        const pageItems = safeDetails.slice(
           pageIndex * BOX_PER_PAGE,
           (pageIndex + 1) * BOX_PER_PAGE
         );
@@ -182,7 +194,7 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
               <h1 className="text-2xl font-bold uppercase tracking-wide">SURAT JALAN</h1>
               <div className="flex items-center justify-center gap-3 mt-1">
                 <span className="font-mono font-bold text-blue-700">
-                  {manifest.delivery_number}
+                  {manifest?.delivery_number || "-"}
                 </span>
               </div>
               {totalPages > 1 && (
@@ -218,12 +230,12 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
                         </tr>
                         <tr>
                           <td className="text-s font-bold text-black-500 py-0.5 pr-2 align-top">Total Box</td>
-                          <td className="font-semibold">{manifest.total_box}</td>
+                          <td className="font-semibold">{manifest?.total_box ?? 0}</td>
                         </tr>
                         <tr>
                           <td className="text-s font-bold text-black-500 py-0.5 pr-2 align-top">Total Berat</td>
                           <td className="font-semibold">
-                            {Number(manifest.total_weight).toLocaleString("id-ID")} kg
+                            {Number(manifest?.total_weight || 0).toLocaleString("id-ID")} kg
                           </td>
                         </tr>
                       </tbody>
@@ -247,7 +259,7 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
                       <tbody>
                         <tr>
                           <td className="text-s font-bold text-black-500 py-0.5 pr-2 align-top w-28">Vendor</td>
-                          <td className="font-semibold">{manifest.vendor_name}</td>
+                          <td className="font-semibold">{manifest?.vendor_name || "-"}</td>
                         </tr>
                         <tr>
                           <td className="text-s font-bold text-black-500 py-0.5 pr-2 align-top">Driver</td>
@@ -263,7 +275,7 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
                 </div>
               )}
 
-              {/* Tabel Rekap - dengan kolom Paraf */}
+              {/* Tabel Rekap */}
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="bg-gray-100">
@@ -275,32 +287,40 @@ export default function B2BManifestPrint({ manifest, details }: B2BManifestPrint
                   </tr>
                 </thead>
                 <tbody>
-                  {referenceSummary.map(({ reference, store_name, total_box, total_weight }) => (
-                    <tr key={reference}>
-                      <td className="border border-black-200 px-2 py-1 font-mono">{reference}</td>
-                      <td className="border border-black-200 px-2 py-1">{store_name}</td>
-                      <td className="border border-black-200 px-2 py-1 text-center font-bold">{total_box}</td>
-                      <td className="border border-black-200 px-2 py-1 text-center"></td> {/* paraf kosong */}
-                      <td className="border border-black-200 px-2 py-1 text-center">
-                        {total_weight.toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                  {referenceSummary.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="border border-gray-200 px-2 py-4 text-center text-gray-400">
+                        Tidak ada data
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    referenceSummary.map(({ reference, store_name, total_box, total_weight }) => (
+                      <tr key={reference}>
+                        <td className="border border-black-200 px-2 py-1 font-mono">{reference}</td>
+                        <td className="border border-black-200 px-2 py-1">{store_name}</td>
+                        <td className="border border-black-200 px-2 py-1 text-center font-bold">{total_box}</td>
+                        <td className="border border-black-200 px-2 py-1 text-center"></td>
+                        <td className="border border-black-200 px-2 py-1 text-center">
+                          {total_weight.toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-50 font-bold">
-                    <td colSpan={2} className="border border-gray-200 px-2 py-1 text-right">TOTAL</td> {/* mencakup Reference & Nama Toko */}
-                    <td className="border border-gray-200 px-2 py-1 text-center">{manifest.total_box}</td>
-                    <td className="border border-gray-200 px-2 py-1 text-center"></td> {/* paraf kosong */}
+                    <td colSpan={2} className="border border-gray-200 px-2 py-1 text-right">TOTAL</td>
+                    <td className="border border-gray-200 px-2 py-1 text-center">{manifest?.total_box ?? 0}</td>
+                    <td className="border border-gray-200 px-2 py-1 text-center"></td>
                     <td className="border border-gray-200 px-2 py-1 text-center">
-                      {Number(manifest.total_weight).toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                      {Number(manifest?.total_weight || 0).toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                     </td>
                   </tr>
                 </tfoot>
               </table>
             </div>
 
-            {/* Footer - hanya di halaman terakhir */}
+            {/* Footer */}
             {isLastPage && (
               <div className="print-footer pt-4">
                 <div className="border-b-2 border-gray-800 mb-4"></div>

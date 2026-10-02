@@ -452,12 +452,14 @@ export default function B2BPutawayPage() {
               list="site-datalist"
               placeholder="Scan / ketik kode site..."
               value={selectedSite}
-              onChange={(e) => setSelectedSite(e.target.value)}
+              onChange={(e) => {
+                // 🔥 Batasi maksimal 8 karakter
+                const value = e.target.value.slice(0, 8);
+                setSelectedSite(value);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && selectedSite.trim()) {
                   e.preventDefault();
-                  // 🔥 Kalau location sudah pernah dipilih (sticky dari box
-                  // sebelumnya), langsung lompat ke box id. Kalau belum, ke location dulu.
                   if (stagingLocation) {
                     inputRef.current?.focus();
                   } else {
@@ -465,6 +467,7 @@ export default function B2BPutawayPage() {
                   }
                 }
               }}
+              maxLength={8}
               className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-300 rounded-xl text-stone-900 font-mono text-lg font-semibold focus:outline-none focus:border-blue-500 disabled:opacity-50 uppercase"
             />
             <datalist id="site-datalist">
