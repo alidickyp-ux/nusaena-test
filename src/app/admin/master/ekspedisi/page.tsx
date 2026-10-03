@@ -2,9 +2,29 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import showToast from "@/lib/toast";
-import { Plus, Pencil, Trash2, Search, X, Truck as TruckIcon, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Search,
+  X,
+  Truck as TruckIcon,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  Package,
+  Weight,
+  DollarSign,
+  Power,
+  PowerOff,
+  RefreshCw,
+  AlertTriangle,
+} from "lucide-react";
 import * as XLSX from "xlsx";
 
+// =====================================================================
+// TYPES
+// =====================================================================
 interface EkspedisiData {
   id: number;
   vendor_name: string;
@@ -24,6 +44,116 @@ const emptyForm = {
 
 const ITEMS_PER_PAGE_OPTIONS = [10, 25, 50];
 
+// =====================================================================
+// SMALL COMPONENTS
+// =====================================================================
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  color,
+}: {
+  icon: any;
+  label: string;
+  value: string | number;
+  color: "blue" | "indigo" | "emerald" | "amber";
+}) {
+  const colorMap = {
+    blue: "bg-blue-50 text-blue-600",
+    indigo: "bg-indigo-50 text-indigo-600",
+    emerald: "bg-emerald-50 text-emerald-600",
+    amber: "bg-amber-50 text-amber-600",
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex items-center gap-3">
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorMap[color]}`}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            {label}
+          </p>
+          <p className="truncate text-xl font-bold text-slate-800">{value}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ isActive }: { isActive: boolean }) {
+  if (isActive) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200">
+        <span className="relative flex h-1.5 w-1.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        </span>
+        Aktif
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 ring-1 ring-slate-200">
+      <PowerOff className="h-3 w-3" />
+      Nonaktif
+    </span>
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  actionLabel,
+  onAction,
+}: {
+  icon: any;
+  title: string;
+  description: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+        <Icon className="h-7 w-7 text-slate-400" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-slate-700">{title}</p>
+        <p className="mt-1 max-w-sm text-xs text-slate-500">{description}</p>
+      </div>
+      {actionLabel && onAction && (
+        <button
+          onClick={onAction}
+          className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-[#0B2B4A] px-3.5 py-2 text-xs font-medium text-white hover:bg-[#123a5e]"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {actionLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SkeletonRow({ cols }: { cols: number }) {
+  return (
+    <tr className="animate-pulse">
+      {Array.from({ length: cols }).map((_, i) => (
+        <td key={i} className="px-5 py-4">
+          <div className="h-3 rounded bg-slate-100" />
+        </td>
+      ))}
+    </tr>
+  );
+}
+
+// =====================================================================
+// PAGE
+// =====================================================================
 export default function MasterEkspedisiPage() {
   const [data, setData] = useState<EkspedisiData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +175,9 @@ export default function MasterEkspedisiPage() {
   const fetchData = useCallback(async (q?: string) => {
     setLoading(true);
     try {
-      const url = q ? `/api/admin/master/ekspedisi?q=${encodeURIComponent(q)}` : `/api/admin/master/ekspedisi`;
+      const url = q
+        ? `/api/admin/master/ekspedisi?q=${encodeURIComponent(q)}`
+        : `/api/admin/master/ekspedisi`;
       const res = await fetch(url, { cache: "no-store" });
       const result = await res.json();
       if (res.ok && result.success) {
@@ -78,18 +210,29 @@ export default function MasterEkspedisiPage() {
   const filteredData = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return data;
-    return data.filter(d => d.vendor_name.toLowerCase().includes(q));
+    return data.filter((d) => d.vendor_name.toLowerCase().includes(q));
   }, [data, search]);
 
   const totalItems = filteredData.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentItems = filteredData.slice(startIndex, startIndex + itemsPerPage);
+  const currentItems = filteredData.slice(
+    startIndex,
+    startIndex + itemsPerPage
+  );
 
   const handlePageChange = (page: number) => {
     if (page < 1 || page > totalPages) return;
     setCurrentPage(page);
   };
+
+  // ─── Stats ──────────────────────────────────────────────
+  const stats = useMemo(() => {
+    const total = data.length;
+    const active = data.filter((d) => d.is_active).length;
+    const inactive = total - active;
+    return { total, active, inactive };
+  }, [data]);
 
   // ─── CRUD ──────────────────────────────────────────────
   const openAddModal = () => {
@@ -125,7 +268,9 @@ export default function MasterEkspedisiPage() {
     setSaving(true);
     try {
       const isEdit = editingId !== null;
-      const url = isEdit ? `/api/admin/master/ekspedisi/${editingId}` : `/api/admin/master/ekspedisi`;
+      const url = isEdit
+        ? `/api/admin/master/ekspedisi/${editingId}`
+        : `/api/admin/master/ekspedisi`;
       const method = isEdit ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -162,9 +307,10 @@ export default function MasterEkspedisiPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/admin/master/ekspedisi/${deleteTarget.id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/admin/master/ekspedisi/${deleteTarget.id}`,
+        { method: "DELETE" }
+      );
       const result = await res.json();
 
       if (res.ok && result.success) {
@@ -182,14 +328,14 @@ export default function MasterEkspedisiPage() {
     }
   };
 
-  // ─── Export Excel (XLSX) ──────────────────────────────
+  // ─── Export Excel ──────────────────────────────────────
   const exportExcel = () => {
     if (data.length === 0) {
       showToast.info("Tidak ada data untuk di-export");
       return;
     }
 
-    const dataToExport = data.map(d => ({
+    const dataToExport = data.map((d) => ({
       "Vendor Name": d.vendor_name,
       "Weight Price": d.weight_price,
       "Volume Price": d.volume_price,
@@ -197,11 +343,11 @@ export default function MasterEkspedisiPage() {
     }));
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
-    ws['!cols'] = [
-      { wch: 30 }, // Vendor Name
-      { wch: 15 }, // Weight Price
-      { wch: 15 }, // Volume Price
-      { wch: 10 }, // Status
+    ws["!cols"] = [
+      { wch: 30 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 10 },
     ];
 
     const wb = XLSX.utils.book_new();
@@ -212,280 +358,527 @@ export default function MasterEkspedisiPage() {
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `master_ekspedisi_${new Date().toISOString().slice(0,10)}.xlsx`);
+    link.setAttribute(
+      "download",
+      `master_ekspedisi_${new Date().toISOString().slice(0, 10)}.xlsx`
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
+  // ─── Pagination Render Helper ──────────────────────────
+  const getPageNumbers = (
+    current: number,
+    total: number
+  ): (number | "...")[] => {
+    const delta = 1;
+    const range: (number | "...")[] = [];
+    const rangeStart = Math.max(2, current - delta);
+    const rangeEnd = Math.min(total - 1, current + delta);
+
+    range.push(1);
+    if (rangeStart > 2) range.push("...");
+    for (let i = rangeStart; i <= rangeEnd; i++) range.push(i);
+    if (rangeEnd < total - 1) range.push("...");
+    if (total > 1) range.push(total);
+
+    return range;
+  };
+
   // ─── Render ─────────────────────────────────────────────
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-slate-800">Master Ekspedisi</h2>
-          <p className="text-xs text-slate-400">Kelola data vendor / ekspedisi</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={exportExcel}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export Excel
-          </button>
-          <button
-            onClick={openAddModal}
-            className="flex items-center gap-2 px-4 py-2 bg-[#0B2B4A] hover:bg-[#123a63] text-white text-sm font-semibold rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Tambah Ekspedisi
-          </button>
-        </div>
-      </div>
+    <div className="min-h-screen bg-slate-50/50 p-4 sm:p-6">
+      <div className="mx-auto max-w-[1400px] space-y-5">
+        {/* ============================================================= */}
+        {/* HEADER                                                         */}
+        {/* ============================================================= */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight text-slate-800">
+                Master Ekspedisi
+              </h1>
+              <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-700 ring-1 ring-blue-200">
+                Master
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-slate-500">
+              Kelola data vendor / ekspedisi beserta harga
+            </p>
+          </div>
 
-      {/* Search & Pagination controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative max-w-sm flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Cari vendor ekspedisi..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 bg-white"
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={exportExcel}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+            >
+              <Download className="h-4 w-4" />
+              Export Excel
+            </button>
+
+            <button
+              onClick={openAddModal}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#0B2B4A] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#123a5e]"
+            >
+              <Plus className="h-4 w-4" />
+              Tambah Ekspedisi
+            </button>
+          </div>
+        </div>
+
+        {/* ============================================================= */}
+        {/* STATS                                                          */}
+        {/* ============================================================= */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <StatCard
+            icon={TruckIcon}
+            label="Total Vendor"
+            value={stats.total}
+            color="blue"
+          />
+          <StatCard
+            icon={Power}
+            label="Aktif"
+            value={stats.active}
+            color="emerald"
+          />
+          <StatCard
+            icon={PowerOff}
+            label="Nonaktif"
+            value={stats.inactive}
+            color="amber"
           />
         </div>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-slate-500">Tampilkan</span>
-          <select
-            value={itemsPerPage}
-            onChange={(e) => {
-              setItemsPerPage(Number(e.target.value));
-              setCurrentPage(1);
-            }}
-            className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-          >
-            {ITEMS_PER_PAGE_OPTIONS.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        </div>
-      </div>
 
-      {/* Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                <th className="px-4 py-3">Vendor Name</th>
-                <th className="px-4 py-3">Weight Price</th>
-                <th className="px-4 py-3">Volume Price</th>
-                <th className="px-4 py-3 text-center">Status</th>
-                <th className="px-4 py-3 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-slate-400">
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                      <span>Memuat data...</span>
-                    </div>
-                  </td>
+        {/* ============================================================= */}
+        {/* TOOLBAR                                                        */}
+        {/* ============================================================= */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1 sm:max-w-md">
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Cari vendor ekspedisi..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-xs text-slate-500">Tampilkan</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => {
+                setItemsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
+            >
+              {ITEMS_PER_PAGE_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => fetchData(search.trim())}
+              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+              title="Refresh"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* ============================================================= */}
+        {/* MAIN CARD                                                      */}
+        {/* ============================================================= */}
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/60">
+                  <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Vendor Name
+                  </th>
+                  <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Weight Price
+                  </th>
+                  <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Volume Price
+                  </th>
+                  <th className="px-5 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Status
+                  </th>
+                  <th className="px-5 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Aksi
+                  </th>
                 </tr>
-              ) : currentItems.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-slate-400">
-                    <div className="flex flex-col items-center gap-2">
-                      <TruckIcon className="w-8 h-8 text-slate-300" />
-                      <span>{search ? "Tidak ada hasil pencarian" : "Belum ada data ekspedisi"}</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                currentItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="px-4 py-3 font-medium text-slate-800">{item.vendor_name}</td>
-                    <td className="px-4 py-3 text-slate-700">{item.weight_price}</td>
-                    <td className="px-4 py-3 text-slate-700">{item.volume_price}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${
-                          item.is_active
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        {item.is_active ? "Aktif" : "Nonaktif"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => openEditModal(item)}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Edit"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteTarget(item)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Hapus"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <>
+                    <SkeletonRow cols={5} />
+                    <SkeletonRow cols={5} />
+                    <SkeletonRow cols={5} />
+                  </>
+                ) : currentItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={5}>
+                      <EmptyState
+                        icon={TruckIcon}
+                        title={
+                          search
+                            ? "Tidak ada hasil pencarian"
+                            : "Belum ada data ekspedisi"
+                        }
+                        description={
+                          search
+                            ? "Coba ubah kata kunci pencarian Anda."
+                            : "Mulai dengan menambahkan vendor ekspedisi pertama."
+                        }
+                        actionLabel={
+                          !search ? "Tambah Ekspedisi" : undefined
+                        }
+                        onAction={!search ? openAddModal : undefined}
+                      />
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Footer with pagination */}
-        {!loading && totalItems > 0 && (
-          <div className="flex flex-wrap items-center justify-between px-4 py-2.5 border-t border-slate-100 text-xs text-slate-400 gap-2">
-            <div>
-              Menampilkan {startIndex + 1}–{Math.min(startIndex + itemsPerPage, totalItems)} dari {totalItems} ekspedisi
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                className="p-1 rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="text-sm font-medium text-slate-700">
-                Halaman {currentPage} dari {totalPages || 1}
-              </span>
-              <button
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages || totalPages === 0}
-                className="p-1 rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+                ) : (
+                  currentItems.map((item) => (
+                    <tr
+                      key={item.id}
+                      className="group transition-colors hover:bg-slate-50/60"
+                    >
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50">
+                            <TruckIcon className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <span className="text-sm font-semibold text-slate-800">
+                            {item.vendor_name}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="font-mono text-sm text-slate-700">
+                          {Number(item.weight_price).toLocaleString("id-ID")}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="font-mono text-sm text-slate-700">
+                          {Number(item.volume_price).toLocaleString("id-ID")}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <StatusBadge isActive={item.is_active} />
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openEditModal(item)}
+                            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(item)}
+                            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                            title="Hapus"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        )}
+
+          {/* Footer Pagination */}
+          {!loading && totalItems > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3">
+              <span className="text-xs text-slate-500">
+                Menampilkan{" "}
+                <span className="font-semibold">
+                  {startIndex + 1}–{Math.min(startIndex + itemsPerPage, totalItems)}
+                </span>{" "}
+                dari <span className="font-semibold">{totalItems}</span> ekspedisi
+              </span>
+
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-50 disabled:opacity-40"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+
+                {getPageNumbers(currentPage, totalPages).map((p, idx) =>
+                  p === "..." ? (
+                    <span
+                      key={`ellipsis-${idx}`}
+                      className="px-2 text-sm text-slate-400"
+                    >
+                      ...
+                    </span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => handlePageChange(p)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                        p === currentPage
+                          ? "bg-[#0B2B4A] text-white"
+                          : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages || totalPages === 0}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-50 disabled:opacity-40"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ─── MODAL ADD/EDIT ────────────────────────────── */}
+      {/* ============================================================= */}
+      {/* MODAL: ADD / EDIT                                              */}
+      {/* ============================================================= */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
-              <h3 className="font-bold text-slate-800">
-                {editingId !== null ? "Edit Ekspedisi" : "Tambah Ekspedisi"}
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
+                  <TruckIcon className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">
+                    {editingId !== null
+                      ? "Edit Ekspedisi"
+                      : "Tambah Ekspedisi"}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {editingId !== null
+                      ? "Perbarui data vendor"
+                      : "Daftarkan vendor baru"}
+                  </p>
+                </div>
+              </div>
               <button
                 onClick={closeModal}
-                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
+                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
               >
-                <X className="w-4 h-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1">
+            {/* Body */}
+            <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+              {/* Section: Vendor */}
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
-                  Vendor Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={form.vendor_name}
-                  onChange={(e) => setForm({ ...form, vendor_name: e.target.value })}
-                  placeholder="Contoh: PT. Ekspedisi Jaya"
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-                />
-              </div>
+                <h4 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <Package className="h-3.5 w-3.5" />
+                  Info Vendor
+                </h4>
 
-              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
-                    Weight Price
+                  <label className="mb-1 block text-[11px] font-medium text-slate-600">
+                    Vendor Name <span className="text-rose-500">*</span>
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    value={form.weight_price}
-                    onChange={(e) => setForm({ ...form, weight_price: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
-                    Volume Price
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={form.volume_price}
-                    onChange={(e) => setForm({ ...form, volume_price: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                    type="text"
+                    value={form.vendor_name}
+                    onChange={(e) =>
+                      setForm({ ...form, vendor_name: e.target.value })
+                    }
+                    placeholder="Contoh: PT. Ekspedisi Jaya"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
                   />
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 pt-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.is_active}
-                  onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
-                />
-                <span className="text-sm text-slate-700">Aktif</span>
-              </label>
+              {/* Section: Harga */}
+              <div>
+                <h4 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <DollarSign className="h-3.5 w-3.5" />
+                  Harga
+                </h4>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-slate-600">
+                      <Weight className="mr-1 inline h-3 w-3" />
+                      Weight Price
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={form.weight_price}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          weight_price: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-slate-600">
+                      <Boxes className="mr-1 inline h-3 w-3" />
+                      Volume Price
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={form.volume_price}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          volume_price: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#0B2B4A]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section: Status */}
+              <div>
+                <h4 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <Power className="h-3.5 w-3.5" />
+                  Status
+                </h4>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm({ ...form, is_active: !form.is_active })
+                  }
+                  className={`flex w-full items-center justify-between rounded-xl border p-3 transition-colors ${
+                    form.is_active
+                      ? "border-emerald-200 bg-emerald-50/60"
+                      : "border-slate-200 bg-slate-50/60"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                        form.is_active
+                          ? "bg-emerald-100 text-emerald-600"
+                          : "bg-slate-200 text-slate-500"
+                      }`}
+                    >
+                      {form.is_active ? (
+                        <Power className="h-4 w-4" />
+                      ) : (
+                        <PowerOff className="h-4 w-4" />
+                      )}
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-slate-800">
+                        {form.is_active ? "Aktif" : "Nonaktif"}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {form.is_active
+                          ? "Vendor dapat digunakan"
+                          : "Vendor tidak akan muncul di pilihan"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Switch */}
+                  <div
+                    className={`relative h-6 w-11 rounded-full transition-colors ${
+                      form.is_active ? "bg-emerald-500" : "bg-slate-300"
+                    }`}
+                  >
+                    <div
+                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                        form.is_active ? "translate-x-5" : "translate-x-0.5"
+                      }`}
+                    />
+                  </div>
+                </button>
+              </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-100 flex-shrink-0">
+            {/* Footer */}
+            <div className="flex gap-3 border-t border-slate-100 bg-slate-50/50 px-6 py-4">
               <button
                 onClick={closeModal}
                 disabled={saving}
-                className="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
               >
                 Batal
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-4 py-2 text-sm font-semibold text-white bg-[#0B2B4A] hover:bg-[#123a63] rounded-lg transition-colors disabled:opacity-60"
+                className="flex-1 rounded-xl bg-[#0B2B4A] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#123a5e] disabled:opacity-60"
               >
-                {saving ? "Menyimpan..." : "Simpan"}
+                {saving ? "Menyimpan..." : editingId !== null ? "Simpan Perubahan" : "Tambah"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ─── DELETE CONFIRM ────────────────────────────── */}
+      {/* ============================================================= */}
+      {/* MODAL: DELETE CONFIRM                                          */}
+      {/* ============================================================= */}
       {deleteTarget && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl p-5">
-            <h3 className="font-bold text-slate-800 mb-1">Hapus Ekspedisi?</h3>
-            <p className="text-sm text-slate-500 mb-4">
-              Vendor <span className="font-semibold text-slate-700">{deleteTarget.vendor_name}</span> akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.
-            </p>
-            <div className="flex items-center justify-end gap-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex flex-col items-center gap-3 px-6 pt-6 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50">
+                <AlertTriangle className="h-7 w-7 text-rose-500" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-800">
+                  Hapus Ekspedisi?
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Vendor{" "}
+                  <span className="font-semibold text-slate-700">
+                    {deleteTarget.vendor_name}
+                  </span>{" "}
+                  akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 px-6 py-5">
               <button
                 onClick={() => setDeleteTarget(null)}
                 disabled={deleting}
-                className="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
               >
                 Batal
               </button>
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-60"
+                className="flex-1 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-rose-700 disabled:opacity-60"
               >
                 {deleting ? "Menghapus..." : "Ya, Hapus"}
               </button>
@@ -494,5 +887,38 @@ export default function MasterEkspedisiPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// =====================================================================
+// ICON: Boxes (missing import fallback)
+// =====================================================================
+function Boxes(props: any) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z" />
+      <path d="m7 16.5-4.74-2.85" />
+      <path d="m7 16.5 5-3" />
+      <path d="M7 16.5v5.17" />
+      <path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z" />
+      <path d="m17 16.5-5-3" />
+      <path d="m17 16.5 4.74-2.85" />
+      <path d="M17 16.5v5.17" />
+      <path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z" />
+      <path d="M12 8 7.26 5.15" />
+      <path d="m12 8 4.74-2.85" />
+      <path d="M12 13.5V8" />
+    </svg>
   );
 }
