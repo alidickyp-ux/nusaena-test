@@ -1,236 +1,389 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
+import {
+  requireAdmin,
+  parseRange,
+  addDays,
+  toNum,
+  tableExists,
+  NO_STORE_HEADERS,
+} from '@/lib/dashboard-utils';
+
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// Helper: cek apakah tabel ada
-async function tableExists(tableName: string): Promise<boolean> {
-  try {
-    const result = await sql`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' AND table_name = ${tableName}
-      ) as exists
-    `;
-    return result[0]?.exists || false;
-  } catch {
-    return false;
-  }
+// ASUMSI (cek kalau hasilnya aneh):
+// 1. Kolom waktu bertipe TIMESTAMPTZ. Kalau TIMESTAMP biasa (tanpa zona),
+//    ganti `col AT TIME ZONE 'Asia/Jakarta'` jadi `col` saja.
+// 2. sorting_details punya kolom session_id -> sorting_sessions.id
+
+// =============================================
+// B2C
+// =============================================
+async function b2cPeriod(from: string, to: string) {
+  const r = await sql`
+    SELECT
+      (SELECT COUNT(*) FROM sorting_sessions
+        WHERE (created_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ) AS sessions,
+      (SELECT COUNT(*) FROM handover_manifests
+        WHERE (signed_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ) AS handovers,
+      (SELECT COALESCE(SUM(total_packages_handed), 0) FROM handover_manifests
+        WHERE (signed_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ) AS handed_packages,
+      (SELECT COALESCE(SUM(total_discrepancy), 0) FROM handover_manifests
+        WHERE (signed_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ) AS discrepancy,
+      (SELECT COUNT(*) FROM handover_manifests
+        WHERE (signed_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+          AND total_discrepancy > 0
+      ) AS discrepancy_handovers,
+      (SELECT COUNT(*) FROM sorting_details sd
+        JOIN sorting_sessions ss ON ss.id = sd.session_id
+        WHERE (ss.created_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ) AS packages,
+      (SELECT COUNT(*) FROM sorting_details sd
+        JOIN sorting_sessions ss ON ss.id = sd.session_id
+        WHERE (ss.created_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+          AND sd.is_validated_handover = true
+      ) AS validated_packages
+  `;
+  const n = toNum(r[0]);
+  return {
+    sessions: n.sessions,
+    handovers: n.handovers,
+    handed_packages: n.handed_packages,
+    discrepancy: n.discrepancy,
+    discrepancy_handovers: n.discrepancy_handovers,
+    packages: n.packages,
+    validated_packages: n.validated_packages,
+    pending_packages: Math.max(0, n.packages - n.validated_packages),
+  };
 }
 
+async function b2cSnapshot() {
+  const r = await sql`
+    SELECT COUNT(*) AS active_sessions FROM sorting_sessions WHERE status = 'RUNNING'
+  `;
+  return toNum(r[0]);
+}
+
+// =============================================
+// INSTANT
+// =============================================
+async function instantPeriod(from: string, to: string) {
+  const r = await sql`
+    SELECT
+      (SELECT COUNT(*) FROM instant_packages
+        WHERE (putaway_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ) AS putaway,
+      (SELECT COUNT(*) FROM instant_packages
+        WHERE (picked_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ) AS picked
+  `;
+  const n = toNum(r[0]);
+  return { putaway: n.putaway, picked: n.picked };
+}
+
+async function instantSnapshot() {
+  const r = await sql`
+    SELECT
+      COUNT(*) FILTER (WHERE status = 'STORED') AS stored_packages,
+      COUNT(*) FILTER (WHERE status = 'COMPLETED') AS completed_total,
+      COUNT(*) FILTER (
+        WHERE status = 'STORED' AND putaway_at < NOW() - INTERVAL '24 hours'
+      ) AS stored_over_24h
+    FROM instant_packages
+  `;
+  return toNum(r[0]);
+}
+
+// =============================================
+// B2B
+// =============================================
+async function b2bPeriod(from: string, to: string) {
+  const r = await sql`
+    SELECT
+      COUNT(*) FILTER (
+        WHERE (putaway_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ) AS putaway_box,
+      COUNT(*) FILTER (
+        WHERE (loading_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ) AS loaded_box,
+      COUNT(DISTINCT reference) FILTER (
+        WHERE (putaway_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ) AS total_references,
+      COUNT(DISTINCT vendor_name) FILTER (
+        WHERE (putaway_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+          AND vendor_name IS NOT NULL
+      ) AS total_vendors,
+      COUNT(DISTINCT site) FILTER (
+        WHERE (putaway_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ) AS total_sites,
+      COALESCE(SUM(
+        CASE WHEN weight ~ '^[0-9]+([.][0-9]+)?$' THEN weight::DECIMAL END
+      ) FILTER (
+        WHERE (putaway_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ), 0) AS total_weight,
+      COALESCE(SUM(volume) FILTER (
+        WHERE (putaway_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      ), 0) AS total_volume
+    FROM b2b_putaway
+    WHERE deleted_at IS NULL
+  `;
+  return toNum(r[0]);
+}
+
+async function b2bSnapshot() {
+  const r = await sql`
+    SELECT
+      COUNT(*) FILTER (WHERE loading_status = 'staging') AS staging_box,
+      COUNT(*) FILTER (
+        WHERE loading_status = 'staging' AND putaway_at < NOW() - INTERVAL '24 hours'
+      ) AS staging_over_24h
+    FROM b2b_putaway
+    WHERE deleted_at IS NULL
+  `;
+  return toNum(r[0]);
+}
+
+// =============================================
+// TREND (per hari, atau per jam kalau rentang = 1 hari)
+// =============================================
+type BucketRow = { bucket: string; total: number | string };
+
+async function trendB2C(from: string, to: string, unit: string, fmt: string) {
+  return (await sql`
+    SELECT to_char(date_trunc(${unit}::text, signed_at AT TIME ZONE 'Asia/Jakarta'), ${fmt}::text) AS bucket,
+           COALESCE(SUM(total_packages_handed), 0) AS total
+    FROM handover_manifests
+    WHERE (signed_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+    GROUP BY 1
+  `) as BucketRow[];
+}
+
+async function trendInstant(from: string, to: string, unit: string, fmt: string) {
+  return (await sql`
+    SELECT to_char(date_trunc(${unit}::text, picked_at AT TIME ZONE 'Asia/Jakarta'), ${fmt}::text) AS bucket,
+           COUNT(*) AS total
+    FROM instant_packages
+    WHERE picked_at IS NOT NULL
+      AND (picked_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+    GROUP BY 1
+  `) as BucketRow[];
+}
+
+async function trendB2B(from: string, to: string, unit: string, fmt: string) {
+  return (await sql`
+    SELECT to_char(date_trunc(${unit}::text, loading_at AT TIME ZONE 'Asia/Jakarta'), ${fmt}::text) AS bucket,
+           COUNT(*) AS total
+    FROM b2b_putaway
+    WHERE deleted_at IS NULL
+      AND loading_at IS NOT NULL
+      AND (loading_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+    GROUP BY 1
+  `) as BucketRow[];
+}
+
+function buildBuckets(from: string, to: string, hourly: boolean): string[] {
+  if (hourly) {
+    return Array.from(
+      { length: 24 },
+      (_, h) => `${from}T${String(h).padStart(2, '0')}`
+    );
+  }
+  const out: string[] = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) out.push(d);
+  return out;
+}
+
+function toMap(rows: BucketRow[]): Record<string, number> {
+  const m: Record<string, number> = {};
+  for (const r of rows) m[r.bucket] = Number(r.total) || 0;
+  return m;
+}
+
+// =============================================
+// DEFAULTS (kalau tabel opsional belum ada)
+// =============================================
+const EMPTY_INSTANT_PERIOD = { putaway: 0, picked: 0 };
+const EMPTY_B2B_PERIOD = {
+  putaway_box: 0,
+  loaded_box: 0,
+  total_references: 0,
+  total_vendors: 0,
+  total_sites: 0,
+  total_weight: 0,
+  total_volume: 0,
+};
+
+// =============================================
+// GET
+// =============================================
 export async function GET(request: NextRequest) {
   try {
-    const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-    if (!sessionToken) {
+    const denied = await requireAdmin(request);
+    if (denied) return denied;
+
+    const parsed = parseRange(request.nextUrl.searchParams);
+    if (!parsed.ok) {
       return NextResponse.json(
-        { success: false, message: 'Unauthorized' },
-        { status: 401 }
+        { success: false, message: parsed.message },
+        { status: 400 }
       );
     }
+    const { range } = parsed;
+    const { from, to, prevFrom, prevTo, hourly } = range;
 
-    const userSession = await verifySession(sessionToken);
-    if (!userSession || userSession.role !== 'ADMIN') {
-      return NextResponse.json(
-        { success: false, message: 'Forbidden' },
-        { status: 403 }
-      );
-    }
+    const [hasInstant, hasB2B] = await Promise.all([
+      tableExists('instant_packages'),
+      tableExists('b2b_putaway'),
+    ]);
 
-    // =============================================
-    // 🔥 B2C STATS
-    // =============================================
-    const b2cResult = await sql`
-      SELECT 
-        (SELECT COUNT(*) FROM sorting_sessions) as total_sessions,
-        (SELECT COUNT(*) FROM sorting_sessions WHERE status = 'RUNNING') as active_sessions,
-        (SELECT COUNT(*) FROM handover_manifests) as total_handovers,
-        (SELECT COUNT(*) FROM history_logs) as total_history,
-        (SELECT COUNT(*) FROM sorting_sessions WHERE created_at::DATE = CURRENT_DATE) as today_sessions,
-        (SELECT COUNT(*) FROM handover_manifests WHERE signed_at::DATE = CURRENT_DATE) as today_handovers,
-        (SELECT COALESCE(SUM(total_discrepancy), 0) FROM handover_manifests) as total_discrepancy,
-        (SELECT COUNT(*) FROM sorting_details) as total_packages,
-        (SELECT COUNT(*) FROM sorting_details WHERE is_validated_handover = true) as validated_packages,
-        (SELECT COUNT(*) FROM sorting_details WHERE is_validated_handover = false) as pending_packages
-    `;
+    // ---------- B2C (wajib) ----------
+    const [b2cCur, b2cPrev, b2cSnap] = await Promise.all([
+      b2cPeriod(from, to),
+      b2cPeriod(prevFrom, prevTo),
+      b2cSnapshot(),
+    ]);
 
-    // =============================================
-    // 🔥 INSTANT STATS (Optional - cek tabel dulu)
-    // =============================================
-    let instantStats = {
-      total_instant: 0,
+    // ---------- Instant (opsional) ----------
+    let instantCur = EMPTY_INSTANT_PERIOD;
+    let instantPrev = EMPTY_INSTANT_PERIOD;
+    let instantSnap: Record<string, number> = {
       stored_packages: 0,
-      picked_packages: 0,
-      completed_packages: 0,
-      today_putaway: 0,
-      today_picked: 0,
-      is_available: false,
+      completed_total: 0,
+      stored_over_24h: 0,
     };
+    let instantAvailable = false;
 
-    const hasInstantTable = await tableExists('instant_packages');
-    if (hasInstantTable) {
+    if (hasInstant) {
       try {
-        const result = await sql`
-          SELECT 
-            (SELECT COUNT(*) FROM instant_packages) as total_instant,
-            (SELECT COUNT(*) FROM instant_packages WHERE status = 'STORED') as stored_packages,
-            (SELECT COUNT(*) FROM instant_packages WHERE status = 'PICKED') as picked_packages,
-            (SELECT COUNT(*) FROM instant_packages WHERE status = 'COMPLETED') as completed_packages,
-            (SELECT COUNT(*) FROM instant_packages WHERE putaway_at::DATE = CURRENT_DATE) as today_putaway,
-            (SELECT COUNT(*) FROM instant_packages WHERE picked_at::DATE = CURRENT_DATE) as today_picked
-        `;
-        instantStats = { ...result[0], is_available: true };
+        [instantCur, instantPrev, instantSnap] = await Promise.all([
+          instantPeriod(from, to),
+          instantPeriod(prevFrom, prevTo),
+          instantSnapshot(),
+        ]);
+        instantAvailable = true;
       } catch (err) {
         console.warn('⚠️ Error fetching instant stats:', err);
       }
     }
 
-    // =============================================
-    // 🔥 B2B STATS (Hanya dari b2b_putaway)
-    // =============================================
-    let b2bStats = {
-      total_b2b_box: 0,
-      staging_box: 0,
-      loaded_box: 0,
-      today_b2b_putaway: 0,
-      today_b2b_loading: 0,
-      total_references: 0,
-      total_vendors: 0,
-      total_sites: 0,
-      total_weight: 0,
-      total_volume: 0,
-      is_available: false,
-    };
+    // ---------- B2B (opsional) ----------
+    let b2bCur: Record<string, number> = EMPTY_B2B_PERIOD;
+    let b2bPrev: Record<string, number> = EMPTY_B2B_PERIOD;
+    let b2bSnap: Record<string, number> = { staging_box: 0, staging_over_24h: 0 };
+    let b2bAvailable = false;
 
-    const hasB2BTable = await tableExists('b2b_putaway');
-    if (hasB2BTable) {
+    if (hasB2B) {
       try {
-        const result = await sql`
-          SELECT 
-            (SELECT COUNT(*) FROM b2b_putaway WHERE deleted_at IS NULL) as total_b2b_box,
-            (SELECT COUNT(*) FROM b2b_putaway WHERE loading_status = 'staging' AND deleted_at IS NULL) as staging_box,
-            (SELECT COUNT(*) FROM b2b_putaway WHERE loading_status = 'loading_complete' AND deleted_at IS NULL) as loaded_box,
-            (SELECT COUNT(*) FROM b2b_putaway WHERE putaway_at::DATE = CURRENT_DATE AND deleted_at IS NULL) as today_b2b_putaway,
-            (SELECT COUNT(*) FROM b2b_putaway WHERE loading_at::DATE = CURRENT_DATE AND deleted_at IS NULL) as today_b2b_loading,
-            (SELECT COUNT(DISTINCT reference) FROM b2b_putaway WHERE deleted_at IS NULL) as total_references,
-            (SELECT COUNT(DISTINCT vendor_name) FROM b2b_putaway WHERE vendor_name IS NOT NULL AND deleted_at IS NULL) as total_vendors,
-            (SELECT COUNT(DISTINCT site) FROM b2b_putaway WHERE deleted_at IS NULL) as total_sites,
-            (SELECT COALESCE(SUM(weight::DECIMAL), 0) FROM b2b_putaway WHERE deleted_at IS NULL AND weight IS NOT NULL AND weight ~ '^[0-9.]+$') as total_weight,
-            (SELECT COALESCE(SUM(volume), 0) FROM b2b_putaway WHERE deleted_at IS NULL) as total_volume
-        `;
-        b2bStats = { ...result[0], is_available: true };
+        [b2bCur, b2bPrev, b2bSnap] = await Promise.all([
+          b2bPeriod(from, to),
+          b2bPeriod(prevFrom, prevTo),
+          b2bSnapshot(),
+        ]);
+        b2bAvailable = true;
       } catch (err) {
         console.warn('⚠️ Error fetching B2B stats:', err);
       }
     }
 
-        // =============================================
-    // 🔥 RECENT ACTIVITY (B2C + Instant + B2B)
-    // =============================================
-    let recentActivity: any[] = [];
+    // ---------- Trend ----------
+    const unit = hourly ? 'hour' : 'day';
+    const fmt = hourly ? 'YYYY-MM-DD"T"HH24' : 'YYYY-MM-DD';
 
-    try {
-      // B2C Handover
-      const b2cActivity = await sql`
-        SELECT 
-          'handover' as type,
-          hm.id::text as id,
-          hm.signed_at as created_at,
-          ss.session_code as code,
-          mt.transporter_name as name,
-          hm.courier_name as detail,
-          hm.total_packages_handed as total_items
-        FROM handover_manifests hm
-        JOIN sorting_sessions ss ON ss.id = hm.session_id
-        JOIN master_transporters mt ON mt.id = ss.transporter_id
-        ORDER BY hm.signed_at DESC
-        LIMIT 5
-      `;
+    const [tB2C, tInstant, tB2B] = await Promise.all([
+      trendB2C(from, to, unit, fmt).catch(() => [] as BucketRow[]),
+      instantAvailable
+        ? trendInstant(from, to, unit, fmt).catch(() => [] as BucketRow[])
+        : Promise.resolve([] as BucketRow[]),
+      b2bAvailable
+        ? trendB2B(from, to, unit, fmt).catch(() => [] as BucketRow[])
+        : Promise.resolve([] as BucketRow[]),
+    ]);
 
-      recentActivity = [...b2cActivity];
+    const mB2C = toMap(tB2C);
+    const mInstant = toMap(tInstant);
+    const mB2B = toMap(tB2B);
 
-      // 🔥 B2B Loading - GROUP BY delivery_number (1 DN = 1 activity)
-      if (hasB2BTable) {
-        const b2bActivity = await sql`
-          SELECT 
-            'b2b_loading' as type,
-            MAX(id)::text as id,
-            MAX(loading_at) as created_at,
-            delivery_number as code,
-            vendor_name as name,
-            CONCAT(
-              COUNT(*)::text, ' box · ', 
-              COUNT(DISTINCT reference)::text, ' reference'
-            ) as detail,
-            COUNT(*) as total_items
-          FROM b2b_putaway
-          WHERE delivery_number IS NOT NULL
-            AND loading_at IS NOT NULL
-            AND deleted_at IS NULL
-          GROUP BY delivery_number, vendor_name
-          ORDER BY MAX(loading_at) DESC
-          LIMIT 5
-        `;
-        recentActivity = [...recentActivity, ...b2bActivity];
-      }
+    const trend = buildBuckets(from, to, hourly).map((bucket) => ({
+      bucket,
+      b2c: mB2C[bucket] || 0,
+      instant: mInstant[bucket] || 0,
+      b2b: mB2B[bucket] || 0,
+    }));
 
-      // 🔥 Instant Pickup (opsional)
-      if (hasInstantTable) {
-        const instantActivity = await sql`
-          SELECT 
-            'instant_pickup' as type,
-            id::text as id,
-            picked_at as created_at,
-            barcode_resi as code,
-            mt.transporter_name as name,
-            location_code as detail,
-            1 as total_items
-          FROM instant_packages ip
-          JOIN master_transporters mt ON mt.id = ip.transporter_id
-          WHERE ip.picked_at IS NOT NULL
-          ORDER BY ip.picked_at DESC
-          LIMIT 5
-        `;
-        recentActivity = [...recentActivity, ...instantActivity];
-      }
+    // ---------- Alerts ----------
+    const alerts: {
+      key: string;
+      level: 'danger' | 'warning' | 'info';
+      count: number;
+      message: string;
+    }[] = [];
 
-      // Sort semua activity by created_at DESC
-      recentActivity.sort((a, b) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-      recentActivity = recentActivity.slice(0, 10);
-
-    } catch (err) {
-      console.warn('⚠️ Error fetching recent activity:', err);
+    if (b2cCur.discrepancy_handovers > 0) {
+      alerts.push({
+        key: 'discrepancy',
+        level: 'danger',
+        count: b2cCur.discrepancy_handovers,
+        message: `${b2cCur.discrepancy_handovers} handover memiliki discrepancy (${b2cCur.discrepancy} paket) di periode ini`,
+      });
+    }
+    if (b2bSnap.staging_over_24h > 0) {
+      alerts.push({
+        key: 'b2b_staging',
+        level: 'warning',
+        count: b2bSnap.staging_over_24h,
+        message: `${b2bSnap.staging_over_24h} box B2B staging lebih dari 24 jam`,
+      });
+    }
+    if (instantSnap.stored_over_24h > 0) {
+      alerts.push({
+        key: 'instant_stored',
+        level: 'warning',
+        count: instantSnap.stored_over_24h,
+        message: `${instantSnap.stored_over_24h} paket instant tersimpan lebih dari 24 jam belum di-pickup`,
+      });
+    }
+    if (b2cCur.pending_packages > 0) {
+      alerts.push({
+        key: 'pending_validation',
+        level: 'info',
+        count: b2cCur.pending_packages,
+        message: `${b2cCur.pending_packages} paket B2C belum divalidasi handover di periode ini`,
+      });
     }
 
-    return NextResponse.json({
-      success: true,
-      stats: {
-        b2c: b2cResult[0] || {
-          total_sessions: 0,
-          active_sessions: 0,
-          total_handovers: 0,
-          total_history: 0,
-          today_sessions: 0,
-          today_handovers: 0,
-          total_discrepancy: 0,
-          total_packages: 0,
-          validated_packages: 0,
-          pending_packages: 0,
+    return NextResponse.json(
+      {
+        success: true,
+        range,
+        stats: {
+          b2c: { ...b2cCur, active_sessions: b2cSnap.active_sessions },
+          instant: {
+            ...instantCur,
+            stored_packages: instantSnap.stored_packages,
+            completed_total: instantSnap.completed_total,
+            is_available: instantAvailable,
+          },
+          b2b: {
+            ...b2bCur,
+            staging_box: b2bSnap.staging_box,
+            is_available: b2bAvailable,
+          },
         },
-        instant: instantStats,
-        b2b: b2bStats,
+        previous: {
+          b2c: b2cPrev,
+          instant: instantPrev,
+          b2b: b2bPrev,
+        },
+        trend,
+        alerts,
       },
-      recentActivity: recentActivity || [],
-    }, {
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-      },
-    });
-
+      { headers: NO_STORE_HEADERS }
+    );
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);
     return NextResponse.json(

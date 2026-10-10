@@ -88,7 +88,7 @@ export async function GET(
         driver_sign,
         security_sign,
         putaway_at,
-        loading_at
+        loading_at,
       FROM b2b_putaway
       WHERE delivery_number = ${manifest.delivery_number}
       ORDER BY reference ASC, created_at ASC
