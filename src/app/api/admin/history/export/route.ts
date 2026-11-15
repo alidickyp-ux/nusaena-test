@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth';
+import { parseDateParam, parseEnumParam, toLikePattern } from '@/lib/api-params';
+import { createCsvResponse } from '@/lib/csv';
+import { toDateString } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-interface HistoryRow {
-  session_code: string;
-  transporter_name: string;
-  resi_number: string;
-  status: string;
-  is_instant: boolean;
-  location_code: string | null;
-  handover_by: string | null;
-  handover_at: string;
+const BATCH_SIZE = 2000;
+const STATUSES = ['DONE', 'CANCELLED', 'NOT_FOUND'] as const;
+
+interface Cursor {
+  at: string; // handover_at dalam teks penuh (presisi mikrodetik)
+  id: string;
 }
 
 export async function GET(request: NextRequest) {
@@ -29,146 +29,79 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const filterInstant = searchParams.get('is_instant');
-    const search = searchParams.get('search') || '';
 
-    let rows: HistoryRow[] = [];
+    // Filter sama persis dengan /api/admin/history; nilai null = filter tidak dipakai.
+    const pattern = toLikePattern(searchParams.get('search'));
+    const isInstantParam = searchParams.get('is_instant');
+    const isInstant = isInstantParam === 'true' ? true : isInstantParam === 'false' ? false : null;
+    const status = parseEnumParam(searchParams.get('status'), STATUSES);
+    const dateFrom = parseDateParam(searchParams.get('date_from'));
+    const dateTo = parseDateParam(searchParams.get('date_to'));
 
-    if (search) {
-      const p = `%${search}%`;
-      
-      if (filterInstant === 'true') {
-        rows = await sql`
-          SELECT 
-            session_code,
-            transporter_name,
-            resi_number,
-            status,
-            is_instant,
-            location_code,
-            handover_by,
-            handover_at
-          FROM history_logs
-          WHERE is_instant = true
-            AND (resi_number ILIKE ${p} OR session_code ILIKE ${p} OR transporter_name ILIKE ${p})
-          ORDER BY handover_at DESC
-        `;
-      } else if (filterInstant === 'false') {
-        rows = await sql`
-          SELECT 
-            session_code,
-            transporter_name,
-            resi_number,
-            status,
-            is_instant,
-            location_code,
-            handover_by,
-            handover_at
-          FROM history_logs
-          WHERE is_instant = false
-            AND (resi_number ILIKE ${p} OR session_code ILIKE ${p} OR transporter_name ILIKE ${p})
-          ORDER BY handover_at DESC
-        `;
-      } else {
-        rows = await sql`
-          SELECT 
-            session_code,
-            transporter_name,
-            resi_number,
-            status,
-            is_instant,
-            location_code,
-            handover_by,
-            handover_at
-          FROM history_logs
-          WHERE resi_number ILIKE ${p} OR session_code ILIKE ${p} OR transporter_name ILIKE ${p}
-          ORDER BY handover_at DESC
-        `;
-      }
-    } else {
-      if (filterInstant === 'true') {
-        rows = await sql`
-          SELECT 
-            session_code,
-            transporter_name,
-            resi_number,
-            status,
-            is_instant,
-            location_code,
-            handover_by,
-            handover_at
-          FROM history_logs
-          WHERE is_instant = true
-          ORDER BY handover_at DESC
-        `;
-      } else if (filterInstant === 'false') {
-        rows = await sql`
-          SELECT 
-            session_code,
-            transporter_name,
-            resi_number,
-            status,
-            is_instant,
-            location_code,
-            handover_by,
-            handover_at
-          FROM history_logs
-          WHERE is_instant = false
-          ORDER BY handover_at DESC
-        `;
-      } else {
-        rows = await sql`
-          SELECT 
-            session_code,
-            transporter_name,
-            resi_number,
-            status,
-            is_instant,
-            location_code,
-            handover_by,
-            handover_at
-          FROM history_logs
-          ORDER BY handover_at DESC
-        `;
-      }
-    }
+    const fetchBatch = async (cursor: Cursor | null) => {
+      const cursorAt = cursor?.at ?? null;
+      const cursorId = cursor?.id ?? null;
 
-    // Konversi ke format CSV
-    const headers = [
-      'Session Code',
-      'Transporter',
-      'Resi Number',
-      'Status',
-      'Type',
-      'Location',
-      'Handover By',
-      'Handover At'
-    ];
+      const rows = await sql`
+        SELECT
+          h.session_code,
+          h.transporter_name,
+          h.resi_number,
+          h.status,
+          h.is_instant,
+          h.location_code,
+          h.handover_by,
+          to_char(h.handover_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD HH24:MI:SS') AS handover_at_wib,
+          h.handover_at::text AS cursor_at,
+          h.id::text AS cursor_id
+        FROM history_logs h
+        WHERE (${pattern}::text IS NULL
+                OR h.resi_number ILIKE ${pattern}::text
+                OR h.session_code ILIKE ${pattern}::text
+                OR h.transporter_name ILIKE ${pattern}::text)
+          AND (${isInstant}::boolean IS NULL OR h.is_instant = ${isInstant}::boolean)
+          AND (${status}::text IS NULL OR h.status = ${status}::text)
+          AND (${dateFrom}::date IS NULL
+                OR h.handover_at >= (${dateFrom}::date::timestamp AT TIME ZONE 'Asia/Jakarta'))
+          AND (${dateTo}::date IS NULL
+                OR h.handover_at < ((${dateTo}::date + 1)::timestamp AT TIME ZONE 'Asia/Jakarta'))
+          AND (${cursorAt}::timestamptz IS NULL
+                OR (h.handover_at, h.id) < (${cursorAt}::timestamptz, ${cursorId}))
+        ORDER BY h.handover_at DESC, h.id DESC
+        LIMIT ${BATCH_SIZE}
+      `;
 
-    // 🔥 Perbaikan: tambahkan tipe untuk parameter 'r'
-    const csvRows = rows.map((r: HistoryRow) => [
-      r.session_code || '',
-      r.transporter_name || '',
-      r.resi_number || '',
-      r.status || '',
-      r.is_instant ? 'INSTANT' : 'REGULAR',
-      r.location_code || '-',
-      r.handover_by || '-',
-      new Date(r.handover_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })
-    ]);
+      const last = rows[rows.length - 1];
+      return {
+        rows: rows.map((r: Record<string, any>) => [
+          r.session_code,
+          r.transporter_name,
+          r.resi_number,
+          r.status,
+          r.is_instant ? 'INSTANT' : 'REGULAR',
+          r.location_code || '-',
+          r.handover_by || '-',
+          r.handover_at_wib,
+        ]),
+        next:
+          rows.length === BATCH_SIZE ? ({ at: last.cursor_at, id: last.cursor_id } as Cursor) : null,
+      };
+    };
 
-    const csvContent = [
-      headers.join(','),
-      ...csvRows.map((r: string[]) => r.join(','))
-    ].join('\n');
-
-    return new NextResponse(csvContent, {
-      headers: {
-        'Content-Type': 'text/csv',
-        'Content-Disposition': `attachment; filename=history-logs-${new Date().toISOString().slice(0, 10)}.csv`,
-      },
+    return await createCsvResponse<Cursor>({
+      filename: `history-logs-${toDateString()}.csv`,
+      headers: [
+        'Session Code',
+        'Transporter',
+        'Resi Number',
+        'Status',
+        'Type',
+        'Location',
+        'Handover By',
+        'Handover At (WIB)',
+      ],
+      fetchBatch,
     });
-
   } catch (error) {
     console.error('Error exporting history:', error);
     return NextResponse.json(

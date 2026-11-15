@@ -1,925 +1,107 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
-import {
-  Search,
-  Download,
-  RefreshCw,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  Printer,
-  List,
-  FileText,
-  Activity,
-  Zap,
-  Package,
-  Clock,
-  Scan,
-  TrendingUp,
-} from "lucide-react";
-import showToast from '@/lib/toast';
+import { Suspense, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Activity, FileText, List, TrendingUp } from "lucide-react";
+import SortingSessionTab from "@/components/admin/b2c/SortingSessionTab";
+import ManifestTab from "@/components/admin/b2c/ManifestTab";
+import HistoryTab from "@/components/admin/b2c/HistoryTab";
+import { CARD } from "@/components/admin/b2c/shared";
+import type { TabKey } from "@/components/admin/b2c/types";
 
-// =========================================================
-// Tipe data
-// =========================================================
-interface HistoryLog {
-  id: string;
-  session_code: string;
-  transporter_name: string;
-  resi_number: string;
-  handover_at: string;
-  handover_by: string;
-  status: string;
-  is_instant: boolean;
-  location_code: string | null;
+const AUTO_REFRESH_MS = 30_000;
+
+const TABS = [
+  { key: "sorting", label: "Sorting Session", icon: Activity },
+  { key: "manifest", label: "Handover Manifest", icon: List },
+  { key: "history", label: "History Logs", icon: FileText },
+] as const;
+
+function isTabKey(value: string | null): value is TabKey {
+  return TABS.some((t) => t.key === value);
 }
 
-interface HistoryStats {
-  total: number;
-  done: number;
-  cancelled: number;
-  not_found: number;
-  instant: number;
-  regular: number;
-}
+function B2CAdminContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
-interface Manifest {
-  id: string;
-  session_code: string;
-  transporter_name: string;
-  courier_name: string;
-  security_name: string;
-  total_packages_handed: number;
-  total_discrepancy: number;
-  signed_at: string;
-}
+  // Tab aktif disimpan di URL (?tab=history) supaya refresh dan share link tetap di tab yang sama.
+  const tabParam = searchParams.get("tab");
+  const activeTab: TabKey = isTabKey(tabParam) ? tabParam : "sorting";
 
-interface SortingDetail {
-  id: string;
-  barcode_resi: string;
-  scanned_at: string;
-  is_validated_handover: boolean;
-  discrepancy_reason: string | null;
-  validated_at: string | null;
-  session_code: string;
-  session_status: string;
-  transporter_name: string;
-  source_type: "sorting" | "instant";
-  instant_status?: "STORED" | "PICKED" | null;
-  sorting_by_name?: string | null;
-}
-
-interface SortingStats {
-  total: number;
-  handed_over: number;
-  pending: number;
-  discrepancy: number;
-  in_running_session: number;
-}
-
-interface Pagination {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
-  hasNext: boolean;
-  hasPrev: boolean;
-}
-
-type TabKey = "sorting" | "manifest" | "history";
-
-// =========================================================
-// Komponen kecil dipakai bersama
-// =========================================================
-function PaginationBar({
-  pagination,
-  onPageChange,
-}: {
-  pagination: Pagination | null;
-  onPageChange: (page: number) => void;
-}) {
-  if (!pagination || pagination.totalPages <= 1) return null;
-  const { page, totalPages, hasPrev, hasNext, limit, total } = pagination;
-
-  return (
-    <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-t border-slate-200">
-      <div className="text-xs text-slate-500 font-medium">
-        Menampilkan {(page - 1) * limit + 1} - {Math.min(page * limit, total)} dari {total} data
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => onPageChange(page - 1)}
-          disabled={!hasPrev}
-          className={`p-2 rounded-lg text-sm transition-colors ${
-            hasPrev ? "hover:bg-slate-200 text-slate-700" : "text-slate-300 cursor-not-allowed"
-          }`}
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-        <span className="text-xs text-slate-500 px-2 font-bold">
-          {page} / {totalPages}
-        </span>
-        <button
-          onClick={() => onPageChange(page + 1)}
-          disabled={!hasNext}
-          className={`p-2 rounded-lg text-sm transition-colors ${
-            hasNext ? "hover:bg-slate-200 text-slate-700" : "text-slate-300 cursor-not-allowed"
-          }`}
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// =========================================================
-// TAB: Sorting Session
-// =========================================================
-function SortingSessionTab() {
-  const [rows, setRows] = useState<SortingDetail[]>([]);
-  const [stats, setStats] = useState<SortingStats | null>(null);
-  const [pagination, setPagination] = useState<Pagination | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "running" | "closed">("all");
-  const [exporting, setExporting] = useState(false);
-  const [showExportOptions, setShowExportOptions] = useState(false);
-  const [page, setPage] = useState(1);
-  const limit = 20;
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      let url = `/api/admin/sorting-details?page=${page}&limit=${limit}`;
-      if (search) url += `&search=${encodeURIComponent(search)}`;
-      if (statusFilter !== "all") url += `&session_status=${statusFilter}`;
-      const res = await fetch(url, { cache: "no-store" });
-      if (res.ok) {
-        const data = await res.json();
-        setRows(data.data || []);
-        setStats(data.stats || null);
-        setPagination(data.pagination || null);
-      } else {
-        const errorData = await res.json();
-        showToast.error(errorData.message || "Gagal memuat data sorting");
-      }
-    } catch (error) {
-      console.error("Error fetching sorting details:", error);
-      showToast.error("Error fetching sorting details");
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search, statusFilter]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, statusFilter]);
-
-  const handleExportSorting = async () => {
-    setExporting(true);
-    try {
-      let url = `/api/admin/sorting-details/export`;
-      const params = new URLSearchParams();
-      if (search) params.append('search', search);
-      if (statusFilter !== 'all') params.append('session_status', statusFilter);
-      if (params.toString()) url += `?${params.toString()}`;
-
-      const res = await fetch(url);
-      if (res.ok) {
-        const blob = await res.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = `sorting-details-${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(downloadUrl);
-        showToast.success('CSV sorting details berhasil didownload');
-      } else {
-        const error = await res.json();
-        showToast.error(error.message || 'Gagal export');
-      }
-    } catch (error) {
-      showToast.error('Error exporting sorting details');
-    } finally {
-      setExporting(false);
-      setShowExportOptions(false);
-    }
+  const changeTab = (key: TabKey) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", key);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
-  const renderSourceBadge = (sourceType: string) => {
-    if (sourceType === "instant") {
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">
-          <Zap className="w-3 h-3" />
-          Instant
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-        <Package className="w-3 h-3" />
-        Regular
-      </span>
-    );
-  };
-
-  const renderHandoverStatus = (row: SortingDetail) => {
-    if (row.discrepancy_reason) {
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
-          <AlertCircle className="w-3 h-3" /> {row.discrepancy_reason}
-        </span>
-      );
-    }
-    if (row.source_type === "instant") {
-      if (row.instant_status === "PICKED") {
-        return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-            <CheckCircle2 className="w-3 h-3" /> Sudah
-          </span>
-        );
-      }
-      return (
-        <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-          Belum
-        </span>
-      );
-    }
-    if (row.is_validated_handover) {
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-          <CheckCircle2 className="w-3 h-3" /> Sudah
-        </span>
-      );
-    }
-    return (
-      <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-        Belum
-      </span>
-    );
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm text-center">
-            <p className="text-2xl font-extrabold text-slate-800 leading-none">{stats.total || 0}</p>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Total Scan</p>
-          </div>
-          <div className="bg-white p-3 rounded-2xl border border-emerald-200 shadow-sm text-center">
-            <p className="text-2xl font-extrabold text-emerald-600 leading-none">{stats.handed_over || 0}</p>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Sudah Handover</p>
-          </div>
-          <div className="bg-white p-3 rounded-2xl border border-amber-200 shadow-sm text-center">
-            <p className="text-2xl font-extrabold text-amber-600 leading-none">{stats.pending || 0}</p>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Belum Handover</p>
-          </div>
-          <div className="bg-white p-3 rounded-2xl border border-rose-200 shadow-sm text-center">
-            <p className="text-2xl font-extrabold text-rose-600 leading-none">{stats.discrepancy || 0}</p>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Discrepancy</p>
-          </div>
-          <div className="bg-white p-3 rounded-2xl border border-blue-200 shadow-sm text-center">
-            <p className="text-2xl font-extrabold text-blue-600 leading-none">{stats.in_running_session || 0}</p>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Di Sesi Running</p>
-          </div>
-        </div>
-      )}
-
-      {/* Toolbar */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Cari nomor resi, session code, atau transporter..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0B2B4A] focus:bg-white transition-all"
-          />
-        </div>
-
-        <div className="flex gap-2">
-          {(["all", "running", "closed"] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className={`px-3 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
-                statusFilter === s
-                  ? "bg-[#0B2B4A] text-white shadow-md shadow-[#0B2B4A]/20"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {s === "all" ? "Semua" : s === "running" ? "Running" : "Closed"}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex gap-2">
-          <div className="relative">
-            <button
-              onClick={() => setShowExportOptions(!showExportOptions)}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-md shadow-emerald-600/20"
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </button>
-            {showExportOptions && (
-              <div className="absolute right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-lg z-10 w-48 overflow-hidden">
-                <button
-                  onClick={handleExportSorting}
-                  disabled={exporting}
-                  className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
-                >
-                  <FileText className="w-4 h-4" />
-                  {exporting ? 'Mengexport...' : 'Sorting Details'}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={fetchData}
-            className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors"
-            title="Refresh"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Resi</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Session</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Transporter</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Source</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sesi</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Handover</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sorting By</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Scanned At</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="w-6 h-6 border-2 border-[#0B2B4A] border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-xs text-slate-400 font-medium">Loading...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : rows.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <Scan className="w-8 h-8 text-slate-300" />
-                      <span className="text-sm text-slate-500 font-medium">
-                        {search ? "Tidak ada resi yang cocok" : "Belum ada data sorting"}
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                rows.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-2.5">
-                      <span className="font-mono text-xs font-bold text-slate-800">{r.barcode_resi}</span>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className="font-mono text-xs text-slate-600">{r.session_code}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-slate-600 font-medium">{r.transporter_name || "-"}</td>
-                    <td className="px-4 py-2.5">{renderSourceBadge(r.source_type)}</td>
-                    <td className="px-4 py-2.5">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        r.session_status === "RUNNING" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"
-                      }`}>
-                        {r.session_status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5">{renderHandoverStatus(r)}</td>
-                    <td className="px-4 py-2.5 text-xs text-slate-600 font-medium">{r.sorting_by_name || '-'}</td>
-                    <td className="px-4 py-2.5 text-xs text-slate-500">
-                      {new Date(r.scanned_at).toLocaleString("id-ID", {
-                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
-                      })}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <PaginationBar pagination={pagination} onPageChange={setPage} />
-      </div>
-    </div>
-  );
-}
-
-// =========================================================
-// TAB: Handover Manifest
-// =========================================================
-function ManifestTab() {
-  const [manifests, setManifests] = useState<Manifest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const fetchManifests = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/manifest", { cache: "no-store" });
-      if (res.ok) {
-        const data = await res.json();
-        setManifests(data.data || []);
-      } else {
-        showToast.error("Gagal memuat data manifest");
-      }
-    } catch (error) {
-      showToast.error("Error fetching manifests");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchManifests();
-  }, [fetchManifests]);
-
-  const filtered = manifests.filter(
-    (m) =>
-      m.session_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.transporter_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.courier_name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const handleExportExcel = async (id: string) => {
-    try {
-      const res = await fetch(`/api/manifest/${id}/export`);
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `manifest-${id}.xlsx`;
-        a.click();
-        showToast.success("Excel berhasil didownload");
-      }
-    } catch (error) {
-      showToast.error("Gagal export excel");
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Cari manifest (session code, transporter, kurir)..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0B2B4A] focus:bg-white transition-all"
-          />
-        </div>
-        <button
-          onClick={fetchManifests}
-          className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-        </button>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Session Code</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Transporter</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Kurir / Security</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Paket / Discrepancy</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tanggal</th>
-                <th className="text-right px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="w-6 h-6 border-2 border-[#0B2B4A] border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-xs text-slate-400 font-medium">Loading...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <FileText className="w-8 h-8 text-slate-300" />
-                      <span className="text-sm text-slate-500 font-medium">
-                        {searchTerm ? "Tidak ada manifest yang sesuai" : "Belum ada manifest"}
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((m) => (
-                  <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-xs font-bold text-slate-800">{m.session_code}</span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-600 font-medium">{m.transporter_name}</td>
-                    <td className="px-4 py-3 text-xs">
-                      <p className="font-bold text-slate-800">{m.courier_name}</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Security: {m.security_name}</p>
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-extrabold text-emerald-600 text-sm">
-                          {m.total_packages_handed - m.total_discrepancy}
-                        </span>
-                        <span className="text-slate-300">/</span>
-                        <span className="text-slate-600 font-semibold">{m.total_packages_handed}</span>
-                        {m.total_discrepancy > 0 && (
-                          <span className="text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded-full font-bold ml-1">
-                            {m.total_discrepancy}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-[11px] text-slate-500 font-medium">
-                      {new Date(m.signed_at).toLocaleDateString("id-ID", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Link
-                          href={`/admin/manifest/${m.id}`}
-                          className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Lihat Detail"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </Link>
-                        <button
-                          onClick={() => handleExportExcel(m.id)}
-                          className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
-                          title="Export Excel"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => window.open(`/print/manifest/${m.id}`, "_blank")}
-                          className="p-2 text-violet-500 hover:bg-violet-50 rounded-lg transition-colors"
-                          title="Print"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// =========================================================
-// TAB: History Logs
-// =========================================================
-function HistoryTab() {
-  const [history, setHistory] = useState<HistoryLog[]>([]);
-  const [stats, setStats] = useState<HistoryStats | null>(null);
-  const [pagination, setPagination] = useState<Pagination | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterInstant, setFilterInstant] = useState<"all" | "instant" | "regular">("all");
-  const [page, setPage] = useState(1);
-  const [exporting, setExporting] = useState(false);
-  const limit = 20;
-
-  const fetchHistory = useCallback(async () => {
-    setLoading(true);
-    try {
-      let url = `/api/admin/history?page=${page}&limit=${limit}`;
-      if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
-      if (filterInstant === "instant") url += `&is_instant=true`;
-      else if (filterInstant === "regular") url += `&is_instant=false`;
-
-      const res = await fetch(url, { cache: "no-store" });
-      if (res.ok) {
-        const data = await res.json();
-        setHistory(data.data || []);
-        setStats(data.stats || null);
-        setPagination(data.pagination || null);
-      } else {
-        showToast.error("Gagal memuat data history");
-      }
-    } catch (error) {
-      showToast.error("Error fetching history");
-    } finally {
-      setLoading(false);
-    }
-  }, [page, searchTerm, filterInstant]);
-
-  useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [searchTerm, filterInstant]);
-
-  const handleExportCSV = async () => {
-    setExporting(true);
-    try {
-      let url = `/api/admin/history/export`;
-      const params = new URLSearchParams();
-
-      if (searchTerm) params.append('search', searchTerm);
-      if (filterInstant === 'instant') params.append('is_instant', 'true');
-      else if (filterInstant === 'regular') params.append('is_instant', 'false');
-
-      if (params.toString()) url += `?${params.toString()}`;
-
-      const res = await fetch(url);
-
-      if (res.ok) {
-        const blob = await res.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = `history-logs-${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(downloadUrl);
-        showToast.success('CSV berhasil didownload (semua data)');
-      } else {
-        const error = await res.json();
-        showToast.error(error.message || 'Gagal export CSV');
-      }
-    } catch (error) {
-      console.error('Error exporting CSV:', error);
-      showToast.error('Error exporting CSV');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "DONE":
-        return <span className="inline-flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] font-bold w-fit"><CheckCircle2 className="w-3 h-3" /> Done</span>;
-      case "CANCELLED":
-        return <span className="inline-flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full text-[10px] font-bold w-fit"><AlertCircle className="w-3 h-3" /> Cancel</span>;
-      case "NOT_FOUND":
-        return <span className="inline-flex items-center gap-1 text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full text-[10px] font-bold w-fit"><XCircle className="w-3 h-3" /> Not Found</span>;
-      default:
-        return <span className="text-[10px] text-slate-500 font-medium">{status}</span>;
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-          <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm text-center">
-            <p className="text-2xl font-extrabold text-slate-800 leading-none">{stats.total}</p>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Total</p>
-          </div>
-          <div className="bg-white p-3 rounded-2xl border border-emerald-200 shadow-sm text-center">
-            <p className="text-2xl font-extrabold text-emerald-600 leading-none">{stats.done}</p>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Done</p>
-          </div>
-          <div className="bg-white p-3 rounded-2xl border border-amber-200 shadow-sm text-center">
-            <p className="text-2xl font-extrabold text-amber-600 leading-none">{stats.cancelled}</p>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Cancel</p>
-          </div>
-          <div className="bg-white p-3 rounded-2xl border border-rose-200 shadow-sm text-center">
-            <p className="text-2xl font-extrabold text-rose-600 leading-none">{stats.not_found}</p>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Not Found</p>
-          </div>
-          <div className="bg-white p-3 rounded-2xl border border-blue-200 shadow-sm text-center">
-            <p className="text-2xl font-extrabold text-blue-600 leading-none">{stats.instant}</p>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Instant</p>
-          </div>
-          <div className="bg-white p-3 rounded-2xl border border-orange-200 shadow-sm text-center">
-            <p className="text-2xl font-extrabold text-orange-600 leading-none">{stats.regular}</p>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">Regular</p>
-          </div>
-        </div>
-      )}
-
-      {/* Toolbar */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Cari resi, session code, atau transporter..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0B2B4A] focus:bg-white transition-all"
-          />
-        </div>
-        <div className="flex gap-2">
-          {(["all", "instant", "regular"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilterInstant(f)}
-              className={`px-3 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
-                filterInstant === f
-                  ? "bg-[#0B2B4A] text-white shadow-md shadow-[#0B2B4A]/20"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {f === "all" ? "Semua" : f === "instant" ? "Instant" : "Regular"}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={handleExportCSV}
-          disabled={exporting}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-emerald-600/20"
-        >
-          {exporting ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              Mengexport...
-            </>
-          ) : (
-            <>
-              <Download className="w-4 h-4" />
-              Export CSV
-            </>
-          )}
-        </button>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Session Code</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Resi Number</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Transporter</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Type</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Location</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Handover By</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tanggal</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="w-6 h-6 border-2 border-[#0B2B4A] border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-xs text-slate-400 font-medium">Loading...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : history.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <Clock className="w-8 h-8 text-slate-300" />
-                      <span className="text-sm text-slate-500 font-medium">
-                        {searchTerm ? "Tidak ada data yang sesuai" : "Belum ada history logs"}
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                history.map((h) => (
-                  <tr key={h.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-2.5">
-                      <span className="font-mono text-xs font-bold text-slate-800">{h.session_code}</span>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className="font-mono text-xs text-slate-600">{h.resi_number}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-slate-600 font-medium">{h.transporter_name}</td>
-                    <td className="px-4 py-2.5">{getStatusBadge(h.status)}</td>
-                    <td className="px-4 py-2.5">
-                      {h.is_instant ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-bold">
-                          <Zap className="w-3 h-3" /> Instant
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold">
-                          <Package className="w-3 h-3" /> Regular
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className="text-xs font-mono font-bold text-blue-600">{h.location_code || "-"}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-slate-600 font-medium">{h.handover_by || "-"}</td>
-                    <td className="px-4 py-2.5 text-[11px] text-slate-500">
-                      {new Date(h.handover_at).toLocaleString("id-ID", {
-                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
-                      })}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <PaginationBar pagination={pagination} onPageChange={setPage} />
-      </div>
-    </div>
-  );
-}
-
-// =========================================================
-// PAGE UTAMA
-// =========================================================
-export default function B2CAdminPage() {
-  const [activeTab, setActiveTab] = useState<TabKey>("sorting");
-
-  const tabs = [
-    { key: "sorting" as TabKey, label: "Sorting Session", icon: Activity },
-    { key: "manifest" as TabKey, label: "Handover Manifest", icon: List },
-    { key: "history" as TabKey, label: "History Logs", icon: FileText },
-  ];
+  const pollMs = autoRefresh ? AUTO_REFRESH_MS : 0;
 
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#0B2B4A] to-[#1a3d5c] flex items-center justify-center shadow-lg shadow-[#0B2B4A]/20 flex-shrink-0">
-          <TrendingUp className="w-5 h-5 text-white" />
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#0B2B4A] to-[#1a3d5c] flex items-center justify-center shadow-lg shadow-[#0B2B4A]/20 flex-shrink-0">
+            <TrendingUp className="w-5 h-5 text-white" aria-hidden />
+          </div>
+          <div>
+            <h1 className="text-xl font-extrabold text-slate-900 leading-tight">Operasional B2C</h1>
+            <p className="text-xs text-slate-500 font-medium">
+              Monitoring sorting, handover & history paket retail
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-xl font-extrabold text-slate-900 leading-tight">
-            Operasional B2C
-          </h1>
-          <p className="text-xs text-slate-500 font-medium">
-            Monitoring sorting, handover & history paket retail
-          </p>
+
+        <div className="flex items-center gap-2">
+          <span id="auto-refresh-label" className="text-xs font-bold text-slate-600">
+            Auto-refresh
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autoRefresh}
+            aria-labelledby="auto-refresh-label"
+            onClick={() => setAutoRefresh((v) => !v)}
+            className={`relative w-10 h-6 rounded-full transition-colors ${
+              autoRefresh ? "bg-emerald-500" : "bg-slate-300"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                autoRefresh ? "translate-x-4" : ""
+              }`}
+            />
+          </button>
         </div>
       </div>
 
-      {/* Tab Container */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        {/* Tab Navigation */}
+      {/* Tab container */}
+      <div className={`${CARD} overflow-hidden`}>
         <div className="border-b border-slate-200 bg-slate-50/50">
-          <div className="flex overflow-x-auto">
-            {tabs.map((tab) => {
+          <div role="tablist" aria-label="Menu Operasional B2C" className="flex overflow-x-auto">
+            {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.key;
               return (
                 <button
                   key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
+                  type="button"
+                  role="tab"
+                  id={`tab-${tab.key}`}
+                  aria-selected={isActive}
+                  aria-controls={`panel-${tab.key}`}
+                  onClick={() => changeTab(tab.key)}
                   className={`relative px-5 py-3.5 text-xs font-bold transition-colors flex items-center gap-2 whitespace-nowrap ${
-                    isActive
-                      ? "text-[#0B2B4A]"
-                      : "text-slate-500 hover:text-slate-700"
+                    isActive ? "text-[#0B2B4A]" : "text-slate-500 hover:text-slate-700"
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-4 h-4" aria-hidden />
                   {tab.label}
                   {isActive && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0B2B4A] rounded-full"></span>
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0B2B4A] rounded-full" />
                   )}
                 </button>
               );
@@ -927,13 +109,26 @@ export default function B2CAdminPage() {
           </div>
         </div>
 
-        {/* Tab Content */}
-        <div className="p-5">
-          {activeTab === "sorting" && <SortingSessionTab />}
-          {activeTab === "manifest" && <ManifestTab />}
-          {activeTab === "history" && <HistoryTab />}
+        <div
+          role="tabpanel"
+          id={`panel-${activeTab}`}
+          aria-labelledby={`tab-${activeTab}`}
+          className="p-5"
+        >
+          {activeTab === "sorting" && <SortingSessionTab pollMs={pollMs} />}
+          {activeTab === "manifest" && <ManifestTab pollMs={pollMs} />}
+          {activeTab === "history" && <HistoryTab pollMs={pollMs} />}
         </div>
       </div>
     </div>
+  );
+}
+
+// useSearchParams di App Router perlu dibungkus Suspense agar build tidak error.
+export default function B2CAdminPage() {
+  return (
+    <Suspense fallback={null}>
+      <B2CAdminContent />
+    </Suspense>
   );
 }
